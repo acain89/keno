@@ -1,10 +1,13 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { kenoBuckets } from "./kenoBuckets";
 import { kenoSystem } from "./kenoSystem";
 import { kenoPlayers, createPlayerHistory } from "./kenoPlayers";
 import { ensureLifetimeTier } from "./kenoLifetime";
 import { playSound } from "../core/sound";
 
+// Firebase Auth (must exist in this repo at ../services/firebase)
+import { onAuthStateChanged } from "firebase/auth";
+import { auth } from "../services/firebase";
 
 /**
  * BOP Keno w/ 95% RTP target (CURRENT):
@@ -48,7 +51,15 @@ const MULT = {
   7: [[3, 1], [4, 2], [5, 6], [6, 18], [7, 60]],
   8: [[3, 1], [4, 2], [5, 5], [6, 15], [7, 40], [8, 100]],
   9: [[4, 1], [5, 2], [6, 6], [7, 20], [8, 60], [9, 140]],
-  10: [[4, 1], [5, 2], [6, 5], [7, 16], [8, 45], [9, 120], [10, 200]],
+  10: [
+    [4, 1],
+    [5, 2],
+    [6, 5],
+    [7, 16],
+    [8, 45],
+    [9, 120],
+    [10, 200],
+  ],
 };
 
 // ---------- BOP params ----------
@@ -155,6 +166,50 @@ function pickLargestPayableWin({ k, wager, allowanceW, bucketB, floorF }) {
 }
 
 export default function useKenoGame() {
+  // ===== AUTH (REQUIRED) =====
+  const [user, setUser] = useState(null);
+const [authReady, setAuthReady] = useState(false);
+
+useEffect(() => {
+  let resolved = false;
+
+  // Safety: never allow auth to block UI forever
+  const timeout = setTimeout(() => {
+    if (!resolved) {
+      setUser(null);
+      setAuthReady(true);
+    }
+  }, 1000); // 1s max loading
+
+  try {
+    if (!auth || typeof onAuthStateChanged !== "function") {
+      clearTimeout(timeout);
+      setUser(null);
+      setAuthReady(true);
+      return;
+    }
+
+    const unsub = onAuthStateChanged(auth, (u) => {
+      resolved = true;
+      clearTimeout(timeout);
+      setUser(u || null);
+      setAuthReady(true);
+    });
+
+    return () => {
+      clearTimeout(timeout);
+      if (typeof unsub === "function") unsub();
+    };
+  } catch {
+    clearTimeout(timeout);
+    setUser(null);
+    setAuthReady(true);
+  }
+}, []);
+
+const isLoggedIn = !!user;
+
+
   // ===== STATE =====
   const [credits, setCredits] = useState(100);
   const [raiseActive, setRaiseActive] = useState(false);
@@ -165,14 +220,14 @@ export default function useKenoGame() {
   const [paused, setPaused] = useState(false);
   const [lastWin, setLastWin] = useState("0.00");
 
-  // TODO: replace these with real values once auth/profile is wired
-  const PLAYER_ID = "local-user"; // unique per user
-  const USERNAME = "Guest";
-  const CASHAPP_ID = "";
-
   // bet controls (base tier bet)
   const [betIndex, setBetIndex] = useState(2); // default $1.00
   const bet = BETS[betIndex].toFixed(2);
+
+  // Derive player identity ONLY from auth
+  const PLAYER_ID = user?.uid || null;
+  const USERNAME = user?.displayName || user?.email || "Player";
+  const CASHAPP_ID = "";
 
   // ===== BUCKETS (stable init) =====
   const bucketsRef = useRef(null);
@@ -198,49 +253,62 @@ export default function useKenoGame() {
   const selectedRef = useRef(new Set());
   const plannedWinRef = useRef({ payout: 0, hitTarget: 0 });
 
-  // ===== PLAYER REGISTRY (auto register; no manual activation) =====
-  if (!kenoPlayers.byId[PLAYER_ID]) {
-    kenoPlayers.byId[PLAYER_ID] = {
-      id: PLAYER_ID,
-      username: USERNAME,
-      cashAppId: CASHAPP_ID,
+  // ===== PLAYER REGISTRY (AUTH ONLY; NO DEV STUBS) =====
+  useEffect(() => {
+    if (!authReady || !isLoggedIn || !PLAYER_ID) return;
 
-      // current view values (kept live each render)
-      credits,
-      setCredits,
+    if (!kenoPlayers.byId[PLAYER_ID]) {
+      kenoPlayers.byId[PLAYER_ID] = {
+        id: PLAYER_ID,
+        username: USERNAME,
+        cashAppId: CASHAPP_ID,
 
-      // accounting + performance summary
-      history: createPlayerHistory(),
+        // current view values (kept live each render)
+        credits,
+        setCredits,
 
-      // per-spin log list (optional for audit)
-      historyLog: [],
-    };
-  }
+        // accounting + performance summary
+        history: createPlayerHistory(),
 
-  // keep these live each render (no stale closures)
-  kenoPlayers.byId[PLAYER_ID].setCredits = setCredits;
-  kenoPlayers.byId[PLAYER_ID].credits = credits;
+        // per-spin log list (optional for audit)
+        historyLog: [],
+      };
+    }
+
+    // keep these live each render (no stale closures)
+    kenoPlayers.byId[PLAYER_ID].setCredits = setCredits;
+    kenoPlayers.byId[PLAYER_ID].credits = credits;
+    kenoPlayers.byId[PLAYER_ID].username = USERNAME;
+  }, [authReady, isLoggedIn, PLAYER_ID, USERNAME, credits]);
 
   // ===== GRID =====
-  const toggleCell = useCallback((n) => {
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (next.has(n)) next.delete(n);
-      else if (next.size < 10) next.add(n);
-      return next;
-    });
-  }, []);
+  const toggleCell = useCallback(
+    (n) => {
+      if (!isLoggedIn) return;
+      setSelected((prev) => {
+        const next = new Set(prev);
+        if (next.has(n)) next.delete(n);
+        else if (next.size < 10) next.add(n);
+        return next;
+      });
+    },
+    [isLoggedIn]
+  );
 
   // ===== BET =====
   const incBet = useCallback(() => {
+    if (!isLoggedIn) return;
     setBetIndex((i) => Math.min(BETS.length - 1, i + 1));
-  }, []);
+  }, [isLoggedIn]);
   const decBet = useCallback(() => {
+    if (!isLoggedIn) return;
     setBetIndex((i) => Math.max(0, i - 1));
-  }, []);
+  }, [isLoggedIn]);
 
   // ===== RAISE =====
   const onRaise = useCallback(() => {
+    if (!isLoggedIn) return;
+
     // system-level kill switches
     if (kenoSystem?.flags?.readOnlyMode) return;
     if (kenoSystem?.flags?.disableRaise) return;
@@ -263,7 +331,7 @@ export default function useKenoGame() {
     }
 
     // player accounting
-    const p = kenoPlayers.byId[PLAYER_ID];
+    const p = PLAYER_ID ? kenoPlayers.byId[PLAYER_ID] : null;
     if (p?.history) {
       p.history.totalCreditsPlayed += baseBet; // raise is an extra wager
       p.history.raisesUsed += 1;
@@ -271,21 +339,20 @@ export default function useKenoGame() {
     }
 
     setRaiseActive(true);
-  }, [bet, credits, paused, raiseActive, PLAYER_ID]);
+  }, [isLoggedIn, bet, credits, paused, raiseActive, PLAYER_ID]);
 
   // ===== BALLS =====
-// ===== BALLS =====
-const addBall = (n) => {
-  playSound("ball", 0.25);
+  const addBall = (n) => {
+    // if no assets exist, playSound should be a safe no-op in ../core/sound
+    playSound("ball", 0.25);
 
-  setBalls((b) => [...b, n]);
+    setBalls((b) => [...b, n]);
 
-  // only count as a "hit" if player selected it
-  if (selectedRef.current.has(n)) {
-    setHits((h) => new Set(h).add(n));
-  }
-};
-
+    // only count as a "hit" if player selected it
+    if (selectedRef.current.has(n)) {
+      setHits((h) => new Set(h).add(n));
+    }
+  };
 
   // ===== CORE: plan outcome using BOP + drift =====
   const planOutcome = () => {
@@ -436,46 +503,48 @@ const addBall = (n) => {
 
   // ===== SPIN =====
   const spin = async () => {
-  playSound("spin", 0.6);
+    if (!isLoggedIn) return;
 
-  const baseBet = Number(bet);
-  if (credits < baseBet) return;
+    playSound("spin", 0.6);
 
-  // deduct base wager immediately
-  setCredits((c) => c - baseBet);
+    const baseBet = Number(bet);
+    if (credits < baseBet) return;
 
-  // player accounting
-  const p = kenoPlayers.byId[PLAYER_ID];
-  if (p?.history) {
-    p.history.totalCreditsPlayed += baseBet;
-    p.history.spinsPlayed += 1;
-    p.history.lastPlayedAt = Date.now();
-  }
+    // deduct base wager immediately
+    setCredits((c) => c - baseBet);
 
-  setLastWin("0.00");
-  setBalls([]);
-  setHits(new Set());
-  setPaused(false);
+    // player accounting
+    const p = PLAYER_ID ? kenoPlayers.byId[PLAYER_ID] : null;
+    if (p?.history) {
+      p.history.totalCreditsPlayed += baseBet;
+      p.history.spinsPlayed += 1;
+      p.history.lastPlayedAt = Date.now();
+    }
 
-  // lock selection for the spin
-  selectedRef.current = new Set(selected);
+    setLastWin("0.00");
+    setBalls([]);
+    setHits(new Set());
+    setPaused(false);
 
-  // plan the full 10-ball draw + payout target
-  planOutcome();
-  const draw = drawRef.current;
+    // lock selection for the spin
+    selectedRef.current = new Set(selected);
 
-  // first 5 balls
-  for (let i = 0; i < 5; i++) {
-    addBall(draw[i]);
-    await new Promise((r) => setTimeout(r, 220));
-  }
+    // plan the full 10-ball draw + payout target
+    planOutcome();
+    const draw = drawRef.current;
 
-  setPaused(true);
-};
+    // first 5 balls
+    for (let i = 0; i < 5; i++) {
+      addBall(draw[i]);
+      await new Promise((r) => setTimeout(r, 220));
+    }
 
+    setPaused(true);
+  };
 
   // ===== RESUME =====
   const resume = async () => {
+    if (!isLoggedIn) return;
     if (!paused) return;
 
     setPaused(false);
@@ -491,7 +560,7 @@ const addBall = (n) => {
     setLastWin(payout.toFixed(2));
 
     // player accounting + performance
-    const p = kenoPlayers.byId[PLAYER_ID];
+    const p = PLAYER_ID ? kenoPlayers.byId[PLAYER_ID] : null;
     if (p?.history) {
       p.history.totalPaidOut += payout;
       p.history.biggestWin = Math.max(p.history.biggestWin, payout);
@@ -517,6 +586,11 @@ const addBall = (n) => {
   };
 
   return {
+    // auth gate flags for UI to block clicks + show overlay
+    authReady,
+    isLoggedIn,
+    loginRequired: authReady && !isLoggedIn,
+
     // state
     selected,
     hits,

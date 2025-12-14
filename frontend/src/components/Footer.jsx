@@ -1,4 +1,5 @@
 import React from "react";
+import { playSound } from "../core/sound";
 
 export default function Footer({
   bet,
@@ -32,7 +33,14 @@ export default function Footer({
 
       <div className="footer-row">
         <div className="bet-col">
-          <button className="btn" onClick={onIncBet} disabled={betDisabled}>
+          <button
+            className="btn"
+            onClick={() => {
+              playSound("click", 0.4);
+              onIncBet();
+            }}
+            disabled={betDisabled}
+          >
             +
           </button>
 
@@ -42,14 +50,24 @@ export default function Footer({
             {inBonus && <span className="x2">×2 BONUS</span>}
           </div>
 
-          <button className="btn" onClick={onDecBet} disabled={betDisabled}>
+          <button
+            className="btn"
+            onClick={() => {
+              playSound("click", 0.4);
+              onDecBet();
+            }}
+            disabled={betDisabled}
+          >
             −
           </button>
         </div>
 
         <button
           className="btn spin"
-          onClick={onSpin}
+          onClick={() => {
+            playSound("spin", 0.6);
+            onSpin();
+          }}
           disabled={paused || inBonus}
         >
           SPIN
@@ -59,7 +77,10 @@ export default function Footer({
           <button
             className={`btn keep ${paused && !inBonus ? "pulse" : ""}`}
             disabled={!paused || inBonus}
-            onClick={onResume}
+            onClick={() => {
+              playSound("click", 0.4);
+              onResume();
+            }}
           >
             KEEP
           </button>
@@ -67,7 +88,10 @@ export default function Footer({
           <button
             className={`btn raise ${paused && !inBonus ? "pulse" : ""}`}
             disabled={!paused || inBonus}
-            onClick={onRaise}
+            onClick={() => {
+              playSound("click", 0.4);
+              onRaise();
+            }}
           >
             RAISE
           </button>
