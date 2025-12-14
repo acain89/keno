@@ -3,6 +3,7 @@ import { kenoBuckets } from "./kenoBuckets";
 import { kenoLifetime } from "./kenoLifetime";
 import { kenoSystem } from "./kenoSystem";
 import { kenoPlayers, createPlayerHistory } from "./kenoPlayers";
+import { ensureLifetimeTier } from "./kenoLifetime";
 
 /**
  * BOP Keno w/ 95% RTP target (CURRENT):
@@ -162,6 +163,7 @@ export default function useKenoGame() {
   const [balls, setBalls] = useState([]); // drawn balls in order
   const [paused, setPaused] = useState(false);
   const [lastWin, setLastWin] = useState("0.00");
+  const life = ensureLifetimeTier(tierKey);
 
   // TODO: replace these with real values once auth/profile is wired
   const PLAYER_ID = "local-user"; // unique per user
