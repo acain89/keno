@@ -1,0 +1,53 @@
+.paytable{
+  width:100%;
+  max-width:420px;      /* EXACT match to game shell */
+  margin:0 auto;
+  display:flex;
+  flex-direction:column;
+  gap:14px;
+}
+
+.paytable-card{
+  width:100%;
+  border-radius:18px;
+  padding:14px;
+  border:1px solid rgba(120,190,255,.22);
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.06), rgba(0,0,0,.6));
+}
+
+.paytable-title{
+  text-align:center;
+  font-weight:900;
+  letter-spacing:.1em;
+  margin-bottom:8px;
+  color:#38E8FF;
+}
+
+.paytable-grid{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:6px 10px;
+}
+
+.paytable-head{
+  font-size:12px;
+  font-weight:900;
+  opacity:.8;
+}
+
+.paytable-cell{
+  font-size:14px;
+}
+
+.paytable-cell.strong{
+  font-weight:900;
+  color:#FFD66B;
+}
+
+.paytable-note{
+  margin-top:6px;
+  text-align:center;
+  font-size:13px;
+  opacity:.8;
+}
