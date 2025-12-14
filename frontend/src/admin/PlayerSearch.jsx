@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from "react";
-import { kenoPlayers } from "../game/KenoPlayers";
+import { kenoPlayers } from "../game/kenoPlayers";
 import PlayerHistory from "./PlayerHistory";
 
 export default function PlayerSearch() {
