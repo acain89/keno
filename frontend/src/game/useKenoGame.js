@@ -1,9 +1,10 @@
 import { useCallback, useRef, useState } from "react";
 import { kenoBuckets } from "./kenoBuckets";
-import { kenoLifetime } from "./kenoLifetime";
 import { kenoSystem } from "./kenoSystem";
 import { kenoPlayers, createPlayerHistory } from "./kenoPlayers";
 import { ensureLifetimeTier } from "./kenoLifetime";
+import { playSound } from "../core/sound";
+
 
 /**
  * BOP Keno w/ 95% RTP target (CURRENT):
@@ -163,7 +164,6 @@ export default function useKenoGame() {
   const [balls, setBalls] = useState([]); // drawn balls in order
   const [paused, setPaused] = useState(false);
   const [lastWin, setLastWin] = useState("0.00");
-  const life = ensureLifetimeTier(tierKey);
 
   // TODO: replace these with real values once auth/profile is wired
   const PLAYER_ID = "local-user"; // unique per user
@@ -274,14 +274,18 @@ export default function useKenoGame() {
   }, [bet, credits, paused, raiseActive, PLAYER_ID]);
 
   // ===== BALLS =====
-  const addBall = (n) => {
-    setBalls((b) => [...b, n]);
+// ===== BALLS =====
+const addBall = (n) => {
+  playSound("ball", 0.25);
 
-    // only count as a "hit" if player selected it
-    if (selectedRef.current.has(n)) {
-      setHits((h) => new Set(h).add(n));
-    }
-  };
+  setBalls((b) => [...b, n]);
+
+  // only count as a "hit" if player selected it
+  if (selectedRef.current.has(n)) {
+    setHits((h) => new Set(h).add(n));
+  }
+};
+
 
   // ===== CORE: plan outcome using BOP + drift =====
   const planOutcome = () => {
@@ -293,7 +297,7 @@ export default function useKenoGame() {
     const { C, F, T } = getTierConfigForBet(baseBet);
 
     // lifetime tracker (must exist per tier)
-    const life = kenoLifetime.byTier[tierKey];
+    const life = ensureLifetimeTier(tierKey);
 
     // lifetime: base spin only (raise accounted separately elsewhere)
     life.spins += 1;
@@ -432,45 +436,43 @@ export default function useKenoGame() {
 
   // ===== SPIN =====
   const spin = async () => {
-    const baseBet = Number(bet);
+  playSound("spin", 0.6);
 
-    if (credits < baseBet) return;
+  const baseBet = Number(bet);
+  if (credits < baseBet) return;
 
-    // deduct base wager immediately
-    setCredits((c) => c - baseBet);
+  // deduct base wager immediately
+  setCredits((c) => c - baseBet);
 
-    // player accounting
-    const p = kenoPlayers.byId[PLAYER_ID];
-    if (p?.history) {
-      p.history.totalCreditsPlayed += baseBet;
-      p.history.spinsPlayed += 1;
-      p.history.lastPlayedAt = Date.now();
-    }
+  // player accounting
+  const p = kenoPlayers.byId[PLAYER_ID];
+  if (p?.history) {
+    p.history.totalCreditsPlayed += baseBet;
+    p.history.spinsPlayed += 1;
+    p.history.lastPlayedAt = Date.now();
+  }
 
-    setLastWin("0.00");
-    setBalls([]);
-    setHits(new Set());
-    setPaused(false);
+  setLastWin("0.00");
+  setBalls([]);
+  setHits(new Set());
+  setPaused(false);
 
-    // lock selection for the spin
-    selectedRef.current = new Set(selected);
+  // lock selection for the spin
+  selectedRef.current = new Set(selected);
 
-    // plan the full 10-ball draw + payout target
-    planOutcome();
-    const draw = drawRef.current;
+  // plan the full 10-ball draw + payout target
+  planOutcome();
+  const draw = drawRef.current;
 
-    // NOTE: removed the two out-of-scope lines that would crash:
-    // life.maxBucket = ...
-    // tier.B = ...
+  // first 5 balls
+  for (let i = 0; i < 5; i++) {
+    addBall(draw[i]);
+    await new Promise((r) => setTimeout(r, 220));
+  }
 
-    // first 5 balls
-    for (let i = 0; i < 5; i++) {
-      addBall(draw[i]);
-      await new Promise((r) => setTimeout(r, 220));
-    }
+  setPaused(true);
+};
 
-    setPaused(true);
-  };
 
   // ===== RESUME =====
   const resume = async () => {
