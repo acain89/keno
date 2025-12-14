@@ -2,7 +2,7 @@ import { useCallback, useRef, useState } from "react";
 import { kenoBuckets } from "./kenoBuckets";
 import { kenoLifetime } from "./kenoLifetime";
 import { kenoSystem } from "./kenoSystem";
-import { kenoPlayers, createPlayerHistory } from "./kenoPlayers";
+import { kenoPlayers, createPlayerHistory } from "./KenoPlayers";
 
 /**
  * BOP Keno w/ 95% RTP target (CURRENT):
