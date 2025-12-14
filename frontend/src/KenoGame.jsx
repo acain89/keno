@@ -4,22 +4,22 @@ import PlayArea from "./components/PlayArea";
 import Footer from "./components/Footer";
 import MenuOverlay from "./components/MenuOverlay";
 import useKenoGame from "./game/useKenoGame";
-
-// 🔐 Admin imports
-import useAdminHotkey from "./admin/useAdminHotkey";
-import AdminAuthModal from "./admin/AdminAuthModal";
-import AdminOverlay from "./admin/AdminOverlay";
-
 import "./keno.css";
 
 export default function KenoGame() {
   const {
+    authReady,
+    isLoggedIn,
+    loginRequired,
+
     selected,
     hits,
     balls,
     paused,
     lastWin,
     bet,
+    credits,
+
     toggleCell,
     incBet,
     decBet,
@@ -29,57 +29,66 @@ export default function KenoGame() {
 
   const [menuOpen, setMenuOpen] = useState(false);
 
-  // 🔐 Admin state (memory-only)
-  const [adminAuthOpen, setAdminAuthOpen] = useState(false);
-  const [adminUnlocked, setAdminUnlocked] = useState(false);
-
-  // 🔐 Ctrl + Shift + K hotkey
-  useAdminHotkey(() => {
-    if (!adminUnlocked) {
-      setAdminAuthOpen(true);
-    }
-  });
+  // ⏳ Wait for Firebase auth to resolve
+  if (!authReady) {
+    return (
+      <div className="shell">
+        <Header isLoggedIn={false} />
+        <div className="login-required-overlay">
+          <h2>Loading…</h2>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <>
       <div className="shell">
-        <Header onMenu={() => setMenuOpen(true)} />
-
-        <PlayArea
-          selected={selected}
-          hits={hits}
-          balls={balls}
-          onToggle={toggleCell}
+        <Header
+          isLoggedIn={isLoggedIn}
+          username={isLoggedIn ? "Player" : null}
+          credits={credits}
+          onMenu={() => setMenuOpen(true)}
         />
 
-        <Footer
-          bet={bet}
-          lastWin={lastWin}
-          paused={paused}
-          onSpin={spin}
-          onResume={resume}
-          onIncBet={incBet}
-          onDecBet={decBet}
-        />
+        <div className={loginRequired ? "blocked" : ""}>
+          <PlayArea
+            selected={selected}
+            hits={hits}
+            balls={balls}
+            onToggle={toggleCell}
+          />
 
-        {menuOpen && <MenuOverlay onClose={() => setMenuOpen(false)} />}
+          <Footer
+            bet={bet}
+            lastWin={lastWin}
+            paused={paused}
+            onSpin={spin}
+            onResume={resume}
+            onIncBet={incBet}
+            onDecBet={decBet}
+          />
+        </div>
+
+        {menuOpen && isLoggedIn && (
+          <MenuOverlay onClose={() => setMenuOpen(false)} />
+        )}
+
+        {loginRequired && (
+          <div className="login-required-overlay">
+            <div className="login-card">
+              <h2>Login Required</h2>
+              <p>Please sign in to play.</p>
+              <button
+                className="btn primary"
+                onClick={() => (window.location.href = "/login")}
+              >
+                Login
+              </button>
+            </div>
+          </div>
+        )}
       </div>
-
-      {/* 🔐 Admin auth modal */}
-      {adminAuthOpen && (
-        <AdminAuthModal
-          onSuccess={() => {
-            setAdminAuthOpen(false);
-            setAdminUnlocked(true);
-          }}
-          onClose={() => setAdminAuthOpen(false)}
-        />
-      )}
-
-      {/* 🔐 Admin panel */}
-      {adminUnlocked && (
-        <AdminOverlay onClose={() => setAdminUnlocked(false)} />
-      )}
     </>
   );
 }

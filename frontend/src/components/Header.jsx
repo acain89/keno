@@ -1,8 +1,9 @@
 import React from "react";
 
 export default function Header({
-  username = "Player07",
-  credits = 1240.75,
+  isLoggedIn,
+  username,
+  credits,
   onMenu = () => {},
   menuPulse = true,
 }) {
@@ -11,8 +12,9 @@ export default function Header({
       <button
         className="profile-btn"
         onClick={onMenu}
+        disabled={!isLoggedIn}
         style={
-          menuPulse
+          isLoggedIn && menuPulse
             ? { boxShadow: "0 0 12px rgba(56,232,255,.35)" }
             : undefined
         }
@@ -20,8 +22,16 @@ export default function Header({
         MENU
       </button>
 
-      <div className="username">{username}</div>
-      <div className="credits">Credits: {Number(credits).toFixed(2)}</div>
+      {isLoggedIn ? (
+        <>
+          <div className="username">{username}</div>
+          <div className="credits">
+            Credits: {Number(credits).toFixed(2)}
+          </div>
+        </>
+      ) : (
+        <div className="username muted">Login Required</div>
+      )}
     </div>
   );
 }
