@@ -1,8 +1,7 @@
-import KenoGame from "./KenoGame";
-import "./keno.css";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import KenoGame from "./KenoGame";
 import Login from "./pages/Login";
+import "./keno.css";
 
 export default function App() {
   return (
@@ -13,9 +12,4 @@ export default function App() {
       </Routes>
     </BrowserRouter>
   );
-}
-
-
-export default function App() {
-  return <KenoGame />;
 }
