@@ -3,6 +3,9 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
+  "engines": {
+    "node": "18.x"
+  },
   "scripts": {
     "dev": "vite",
     "build": "vite build",
@@ -26,16 +29,4 @@
     "globals": "^16.5.0",
     "vite": "^7.2.4"
   }
-}
-
-{
-  "frozen": false,
-  "adminForceWin": false
-}
-
-{
-  "username": "player07",
-  "cashApp": "$player07",
-  "credits": 100,
-  "createdAt": ...
 }
