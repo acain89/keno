@@ -27,3 +27,15 @@
     "vite": "^7.2.4"
   }
 }
+
+{
+  "frozen": false,
+  "adminForceWin": false
+}
+
+{
+  "username": "player07",
+  "cashApp": "$player07",
+  "credits": 100,
+  "createdAt": ...
+}
