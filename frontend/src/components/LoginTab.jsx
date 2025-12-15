@@ -4,34 +4,81 @@ import {
   createUserWithEmailAndPassword,
 } from "firebase/auth";
 import { auth } from "../services/firebase";
+import { doc, setDoc, serverTimestamp } from "firebase/firestore";
+import { db } from "../services/firebase";
+
+const USERNAME_DOMAIN = "@keno.game";
+
+function normalizeUsername(u) {
+  return u.trim().toLowerCase();
+}
 
 export default function LoginTab({ onLoginSuccess }) {
-  const [email, setEmail] = useState("");
+  const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [cashApp, setCashApp] = useState("");
   const [mode, setMode] = useState("login"); // "login" | "signup"
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
   const submit = async (e) => {
     e.preventDefault();
-    if (!email || !password) return;
+    if (loading) return;
+
+    setError("");
+
+    const cleanUsername = normalizeUsername(username);
+
+    if (!cleanUsername || !password) {
+      setError("Username and password are required.");
+      return;
+    }
+
+    if (mode === "signup" && !cashApp) {
+      setError("Cash App ID is required.");
+      return;
+    }
+
+    // Internal email mapping (never shown to user)
+    const email = `${cleanUsername}${USERNAME_DOMAIN}`;
 
     setLoading(true);
-    setError("");
 
     try {
       if (mode === "login") {
         await signInWithEmailAndPassword(auth, email, password);
       } else {
-        await createUserWithEmailAndPassword(auth, email, password);
+        const cred = await createUserWithEmailAndPassword(
+          auth,
+          email,
+          password
+        );
+
+        // 🔒 Persist profile data (NOT public)
+        await setDoc(doc(db, "users", cred.user.uid), {
+          username: cleanUsername,
+          cashApp: cashApp.trim(),
+          createdAt: serverTimestamp(),
+        });
       }
 
-      // Firebase auth state WILL update
-      // useKenoGame.onAuthStateChanged will fire
+      setLoading(false);
       onLoginSuccess?.();
     } catch (err) {
       console.error(err);
-      setError(err.message || "Authentication failed");
+
+      if (err.code === "auth/user-not-found") {
+        setError("Account not found.");
+      } else if (err.code === "auth/wrong-password") {
+        setError("Incorrect password.");
+      } else if (err.code === "auth/email-already-in-use") {
+        setError("Username already taken.");
+      } else if (err.code === "auth/weak-password") {
+        setError("Password must be at least 6 characters.");
+      } else {
+        setError("Authentication failed.");
+      }
+
       setLoading(false);
     }
   };
@@ -42,11 +89,12 @@ export default function LoginTab({ onLoginSuccess }) {
 
       <form onSubmit={submit}>
         <input
-          type="email"
-          placeholder="Email"
-          value={email}
+          type="text"
+          placeholder="Username"
+          value={username}
           autoComplete="username"
-          onChange={(e) => setEmail(e.target.value)}
+          onChange={(e) => setUsername(e.target.value)}
+          disabled={loading}
           required
         />
 
@@ -58,12 +106,24 @@ export default function LoginTab({ onLoginSuccess }) {
             mode === "login" ? "current-password" : "new-password"
           }
           onChange={(e) => setPassword(e.target.value)}
+          disabled={loading}
           required
         />
 
+        {mode === "signup" && (
+          <input
+            type="text"
+            placeholder="Cash App ID (e.g. $player07)"
+            value={cashApp}
+            onChange={(e) => setCashApp(e.target.value)}
+            disabled={loading}
+            required
+          />
+        )}
+
         {error && <div className="login-error">{error}</div>}
 
-        <button className="btn primary" disabled={loading}>
+        <button className="btn primary" type="submit" disabled={loading}>
           {loading
             ? "Please wait…"
             : mode === "login"
@@ -74,25 +134,25 @@ export default function LoginTab({ onLoginSuccess }) {
 
       <div className="login-switch">
         {mode === "login" ? (
-          <button
-            className="link"
+          <span
+            className="login-link"
             onClick={() => {
               setError("");
               setMode("signup");
             }}
           >
-            Don’t have an account? Create one
-          </button>
+            Don’t have an account? <strong>Join here</strong>
+          </span>
         ) : (
-          <button
-            className="link"
+          <span
+            className="login-link"
             onClick={() => {
               setError("");
               setMode("login");
             }}
           >
-            Already have an account? Login
-          </button>
+            Already have an account? <strong>Login</strong>
+          </span>
         )}
       </div>
     </div>

@@ -1,16 +1,24 @@
 const sounds = {};
+let enabled = true;
 
-export function playSound(name, volume = 0.6) {
+export function setSoundEnabled(v) {
+  enabled = !!v;
+}
+
+export function playSound(name, volume = 0.5) {
+  if (!enabled) return;
+
   try {
     if (!sounds[name]) {
-      sounds[name] = new Audio(`/sounds/${name}.mp3`);
+      const audio = new Audio(`/sounds/${name}.mp3`);
+      audio.preload = "auto";
+      sounds[name] = audio;
     }
 
-    const s = sounds[name];
-    s.currentTime = 0;
-    s.volume = volume;
-    s.play();
+    const a = sounds[name].cloneNode();
+    a.volume = volume;
+    a.play().catch(() => {});
   } catch {
-    // fail silently (important for autoplay restrictions)
+    // silent fail by design
   }
 }

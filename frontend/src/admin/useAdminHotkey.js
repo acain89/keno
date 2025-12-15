@@ -9,7 +9,7 @@ export default function useAdminHotkey(onTrigger) {
         e.key.toLowerCase() === "k"
       ) {
         e.preventDefault();
-        onTrigger();
+        onTrigger?.();
       }
     };
 

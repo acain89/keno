@@ -1,94 +1,175 @@
-import React, { useMemo, useState } from "react";
-import { kenoPlayers } from "../game/kenoPlayers";
-import PlayerHistory from "./PlayerHistory";
+import React, { useState } from "react";
+import {
+  collection,
+  getDocs,
+  query,
+  where,
+  updateDoc,
+  doc,
+} from "firebase/firestore";
+import { db } from "../services/firebase";
+import "./admin.css";
+import { addDoc, serverTimestamp } from "firebase/firestore";
+import { auth } from "../services/firebase";
+
 
 export default function PlayerSearch() {
-  const [query, setQuery] = useState("");
-  const [selected, setSelected] = useState(null);
-  const [adjust, setAdjust] = useState("");
+  const [term, setTerm] = useState("");
+  const [results, setResults] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [adjust, setAdjust] = useState({}); // uid -> delta
 
-  const players = Object.values(kenoPlayers.byId);
+  const runSearch = async () => {
+    const qTerm = term.trim().toLowerCase();
+    if (!qTerm) return;
 
-  // search by username OR CashApp ID
-  const results = useMemo(() => {
-    if (!query) return [];
-    const q = query.toLowerCase();
-    return players.filter(
-      (p) =>
-        p.username?.toLowerCase().includes(q) ||
-        p.cashAppId?.toLowerCase().includes(q)
-    );
-  }, [query, players]);
+    setLoading(true);
+    setError("");
+    setResults([]);
 
-  // apply admin credit adjustment + track history
-  const applyAdjustment = () => {
-    if (!selected) return;
+    try {
+      const q = query(
+        collection(db, "users"),
+        where("username", "==", qTerm)
+      );
 
-    const delta = Number(adjust);
-    if (Number.isNaN(delta) || delta === 0) return;
+      const snap = await getDocs(q);
 
-    // apply credit change safely
-    selected.setCredits((c) => Math.max(0, c + delta));
+      const found = [];
+      snap.forEach((d) => {
+        found.push({
+          uid: d.id,
+          ...d.data(),
+        });
+      });
 
-    // 🔐 track admin adjustment in player history
-    if (selected.history) {
-      selected.history.totalAdminAdjustments += delta;
-      selected.history.lastAdminActionAt = Date.now();
+      setResults(found);
+    } catch (err) {
+      console.error(err);
+      setError("Search failed.");
+    } finally {
+      setLoading(false);
     }
+  };
 
-    setAdjust("");
+  const applyAdjustment = async (uid, currentCredits) => {
+  const raw = adjust[uid];
+  const delta = Number(raw);
+
+  // Guard: empty, zero, or invalid input
+  if (!raw || Number.isNaN(delta) || delta === 0) return;
+
+  const before = Number(currentCredits) || 0;
+  const after = Math.max(0, before + delta);
+
+  try {
+    // Update player credits
+    await updateDoc(doc(db, "users", uid), {
+      credits: after,
+    });
+
+    // Write admin audit log
+    await addDoc(collection(db, "adminLogs"), {
+      targetUid: uid,
+      delta,
+      before,
+      after,
+      adminUid: auth.currentUser?.uid ?? "unknown",
+      timestamp: serverTimestamp(),
+    });
+
+    // Optimistic UI update
+    setResults((prev) =>
+      prev.map((p) =>
+        p.uid === uid ? { ...p, credits: after } : p
+      )
+    );
+
+    // Clear input
+    setAdjust((a) => ({ ...a, [uid]: "" }));
+  } catch (err) {
+    console.error("Credit adjustment failed:", err);
+    alert("Failed to update credits.");
+  }
+};
+
+
+
+      // Update UI immediately
+      setResults((r) =>
+        r.map((p) =>
+          p.uid === uid
+            ? { ...p, credits: (p.credits || 0) + delta }
+            : p
+        )
+      );
+
+      setAdjust((a) => ({ ...a, [uid]: "" }));
+    } catch (err) {
+      console.error("Credit update failed", err);
+      alert("Failed to update credits");
+    }
   };
 
   return (
-    <div className="admin-section">
+    <div className="admin-card">
       <h3>Player Search</h3>
 
-      <input
-        placeholder="Search by username or CashApp ID"
-        value={query}
-        onChange={(e) => setQuery(e.target.value)}
-        style={{ width: "100%", marginBottom: 8, padding: 6 }}
-      />
+      <div className="admin-row">
+        <input
+          type="text"
+          placeholder="Username"
+          value={term}
+          onChange={(e) => setTerm(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && runSearch()}
+        />
+        <button className="btn" onClick={runSearch} disabled={loading}>
+          Search
+        </button>
+      </div>
+
+      {loading && <div className="admin-muted">Searching…</div>}
+      {error && <div className="admin-error">{error}</div>}
 
       {results.map((p) => (
-        <div
-          key={p.id}
-          onClick={() => setSelected(p)}
-          style={{
-            padding: 8,
-            cursor: "pointer",
-            background: selected?.id === p.id ? "#1e2444" : "transparent",
-          }}
-        >
-          <strong>{p.username}</strong> — {p.cashAppId}
+        <div key={p.uid} className="admin-player">
+          <div className="admin-player-header">
+            <strong>{p.username}</strong>
+            <span className="admin-muted">
+              Credits: {p.credits ?? 0}
+            </span>
+          </div>
+
+          <div className="admin-player-meta">
+            <div>UID: {p.uid}</div>
+            <div>Cash App: {p.cashApp || "—"}</div>
+          </div>
+
+          <div className="admin-adjust">
+            <input
+              type="number"
+              placeholder="+ / − credits"
+              value={adjust[p.uid] || ""}
+              onChange={(e) =>
+                setAdjust((a) => ({
+                  ...a,
+                  [p.uid]: e.target.value,
+                }))
+              }
+            />
+            <button
+              className="btn"
+              onClick={() => applyAdjustment(p.uid, p.credits)}
+            >
+              Apply
+            </button>
+          </div>
         </div>
       ))}
 
-      {selected && (
-        <div style={{ marginTop: 12 }}>
-          <h4>Player Details</h4>
-
-          <div><strong>ID:</strong> {selected.id}</div>
-          <div><strong>Username:</strong> {selected.username}</div>
-          <div><strong>CashApp:</strong> {selected.cashAppId}</div>
-          <div><strong>Credits:</strong> ${selected.credits.toFixed(2)}</div>
-
-          <div style={{ marginTop: 8 }}>
-            <input
-              type="number"
-              placeholder="+ / - amount"
-              value={adjust}
-              onChange={(e) => setAdjust(e.target.value)}
-              style={{ width: "100%", marginBottom: 6 }}
-            />
-            <button onClick={applyAdjustment} style={{ width: "100%" }}>
-              Apply Credit Adjustment
-            </button>
-          </div>
-
-          {/* 🔎 Play history (read-only) */}
-          <PlayerHistory player={selected} />
-        </div>
+      {!loading && results.length === 0 && term && (
+        <div className="admin-muted">No players found</div>
       )}
     </div>
   );

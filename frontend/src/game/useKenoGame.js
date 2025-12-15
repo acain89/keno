@@ -4,6 +4,9 @@ import { kenoSystem } from "./kenoSystem";
 import { kenoPlayers, createPlayerHistory } from "./kenoPlayers";
 import { ensureLifetimeTier } from "./kenoLifetime";
 import { playSound } from "../core/sound";
+import { doc, getDoc, setDoc, updateDoc } from "firebase/firestore";
+import { db } from "../services/firebase";
+
 
 // Firebase Auth (must exist in this repo at ../services/firebase)
 import { onAuthStateChanged } from "firebase/auth";
@@ -43,14 +46,54 @@ const TIER_BY_BET = {
 // ---------- Multiplier table (k -> [hit, mult]) ----------
 const MULT = {
   1: [[1, 1]],
-  2: [[1, 1], [2, 4]],
-  3: [[2, 2], [3, 8]],
-  4: [[2, 1], [3, 4], [4, 15]],
-  5: [[2, 1], [3, 3], [4, 8], [5, 25]],
-  6: [[3, 1], [4, 3], [5, 10], [6, 35]],
-  7: [[3, 1], [4, 2], [5, 6], [6, 18], [7, 60]],
-  8: [[3, 1], [4, 2], [5, 5], [6, 15], [7, 40], [8, 100]],
-  9: [[4, 1], [5, 2], [6, 6], [7, 20], [8, 60], [9, 140]],
+  2: [
+    [1, 1],
+    [2, 4],
+  ],
+  3: [
+    [2, 2],
+    [3, 8],
+  ],
+  4: [
+    [2, 1],
+    [3, 4],
+    [4, 15],
+  ],
+  5: [
+    [2, 1],
+    [3, 3],
+    [4, 8],
+    [5, 25],
+  ],
+  6: [
+    [3, 1],
+    [4, 3],
+    [5, 10],
+    [6, 35],
+  ],
+  7: [
+    [3, 1],
+    [4, 2],
+    [5, 6],
+    [6, 18],
+    [7, 60],
+  ],
+  8: [
+    [3, 1],
+    [4, 2],
+    [5, 5],
+    [6, 15],
+    [7, 40],
+    [8, 100],
+  ],
+  9: [
+    [4, 1],
+    [5, 2],
+    [6, 6],
+    [7, 20],
+    [8, 60],
+    [9, 140],
+  ],
   10: [
     [4, 1],
     [5, 2],
@@ -168,54 +211,61 @@ function pickLargestPayableWin({ k, wager, allowanceW, bucketB, floorF }) {
 export default function useKenoGame() {
   // ===== AUTH (REQUIRED) =====
   const [user, setUser] = useState(null);
-const [authReady, setAuthReady] = useState(false);
+  const [authReady, setAuthReady] = useState(false);
 
-useEffect(() => {
-  let resolved = false;
+  // Used by UI to open a modal when a locked action is attempted
+  const [loginPromptTick, setLoginPromptTick] = useState(0);
+  const requestLogin = useCallback(() => {
+    // Don't spam prompts while auth is still resolving
+    if (!authReady) return;
+    setLoginPromptTick((t) => t + 1);
+  }, [authReady]);
 
-  // Safety: never allow auth to block UI forever
-  const timeout = setTimeout(() => {
-    if (!resolved) {
-      setUser(null);
-      setAuthReady(true);
-    }
-  }, 1000); // 1s max loading
+  useEffect(() => {
+    // Fail closed: auth is required, but don't hang forever
+    let resolved = false;
 
-  try {
-    if (!auth || typeof onAuthStateChanged !== "function") {
+    const timeout = setTimeout(() => {
+      if (!resolved) {
+        setUser(null);
+        setAuthReady(true);
+      }
+    }, 1500);
+
+    try {
+      if (!auth || typeof onAuthStateChanged !== "function") {
+        clearTimeout(timeout);
+        setUser(null);
+        setAuthReady(true);
+        return;
+      }
+
+      const unsub = onAuthStateChanged(auth, (u) => {
+        resolved = true;
+        clearTimeout(timeout);
+        setUser(u || null);
+        setAuthReady(true);
+      });
+
+      return () => {
+        clearTimeout(timeout);
+        if (typeof unsub === "function") unsub();
+      };
+    } catch {
       clearTimeout(timeout);
       setUser(null);
       setAuthReady(true);
-      return;
     }
+  }, []);
 
-    const unsub = onAuthStateChanged(auth, (u) => {
-      resolved = true;
-      clearTimeout(timeout);
-      setUser(u || null);
-      setAuthReady(true);
-    });
-
-    return () => {
-      clearTimeout(timeout);
-      if (typeof unsub === "function") unsub();
-    };
-  } catch {
-    clearTimeout(timeout);
-    setUser(null);
-    setAuthReady(true);
-  }
-}, []);
-
-const isLoggedIn = !!user;
-
+  const isLoggedIn = !!user;
 
   // ===== STATE =====
   const [credits, setCredits] = useState(100);
   const [raiseActive, setRaiseActive] = useState(false);
 
   const [selected, setSelected] = useState(new Set());
-  const [hits, setHits] = useState(new Set()); // only "hit" numbers (drawn AND selected)
+  const [hits, setHits] = useState(new Set()); // drawn AND selected
   const [balls, setBalls] = useState([]); // drawn balls in order
   const [paused, setPaused] = useState(false);
   const [lastWin, setLastWin] = useState("0.00");
@@ -226,7 +276,13 @@ const isLoggedIn = !!user;
 
   // Derive player identity ONLY from auth
   const PLAYER_ID = user?.uid || null;
-  const USERNAME = user?.displayName || user?.email || "Player";
+
+  // ✅ Display username ONLY (strip internal @keno.game)
+  const USERNAME = user?.email
+    ? String(user.email).toLowerCase().replace("@keno.game", "")
+    : "Player";
+
+  // IMPORTANT: CashApp is NOT loaded here; it's profile/admin only (Firestore later)
   const CASHAPP_ID = "";
 
   // ===== BUCKETS (stable init) =====
@@ -267,10 +323,7 @@ const isLoggedIn = !!user;
         credits,
         setCredits,
 
-        // accounting + performance summary
         history: createPlayerHistory(),
-
-        // per-spin log list (optional for audit)
         historyLog: [],
       };
     }
@@ -281,10 +334,55 @@ const isLoggedIn = !!user;
     kenoPlayers.byId[PLAYER_ID].username = USERNAME;
   }, [authReady, isLoggedIn, PLAYER_ID, USERNAME, credits]);
 
+useEffect(() => {
+  if (!authReady || !isLoggedIn || !PLAYER_ID) return;
+
+  let alive = true;
+
+  (async () => {
+    try {
+      const ref = doc(db, "users", PLAYER_ID);
+      const snap = await getDoc(ref);
+
+      if (!alive) return;
+
+      if (snap.exists()) {
+        const data = snap.data();
+        if (typeof data.credits === "number") {
+          setCredits(data.credits);
+        }
+      } else {
+        // First login safety net
+        await setDoc(ref, {
+          username: USERNAME,
+          credits: 100,
+          createdAt: new Date(),
+        });
+      }
+    } catch (err) {
+      console.error("Failed to load credits", err);
+    }
+  })();
+
+  return () => {
+    alive = false;
+  };
+}, [authReady, isLoggedIn, PLAYER_ID, USERNAME]);
+
+useEffect(() => {
+  if (!authReady || !isLoggedIn || !PLAYER_ID) return;
+
+  const ref = doc(db, "users", PLAYER_ID);
+  updateDoc(ref, { credits }).catch(() => {});
+}, [credits, authReady, isLoggedIn, PLAYER_ID]);
+
   // ===== GRID =====
   const toggleCell = useCallback(
     (n) => {
-      if (!isLoggedIn) return;
+      if (!isLoggedIn) {
+        requestLogin();
+        return;
+      }
       setSelected((prev) => {
         const next = new Set(prev);
         if (next.has(n)) next.delete(n);
@@ -292,22 +390,34 @@ const isLoggedIn = !!user;
         return next;
       });
     },
-    [isLoggedIn]
+    [isLoggedIn, requestLogin]
   );
 
   // ===== BET =====
   const incBet = useCallback(() => {
-    if (!isLoggedIn) return;
+    if (kenoPlayers.byId[PLAYER_ID]?.frozen) return;
+    if (!isLoggedIn) {
+      requestLogin();
+      return;
+    }
     setBetIndex((i) => Math.min(BETS.length - 1, i + 1));
-  }, [isLoggedIn]);
+  }, [isLoggedIn, requestLogin]);
+
   const decBet = useCallback(() => {
-    if (!isLoggedIn) return;
+    if (!isLoggedIn) {
+      requestLogin();
+      return;
+    }
     setBetIndex((i) => Math.max(0, i - 1));
-  }, [isLoggedIn]);
+  }, [isLoggedIn, requestLogin]);
 
   // ===== RAISE =====
   const onRaise = useCallback(() => {
-    if (!isLoggedIn) return;
+     if (kenoPlayers.byId[PLAYER_ID]?.frozen) return;
+     if (!isLoggedIn) {
+      requestLogin();
+      return;
+    }
 
     // system-level kill switches
     if (kenoSystem?.flags?.readOnlyMode) return;
@@ -339,16 +449,14 @@ const isLoggedIn = !!user;
     }
 
     setRaiseActive(true);
-  }, [isLoggedIn, bet, credits, paused, raiseActive, PLAYER_ID]);
+  }, [isLoggedIn, requestLogin, bet, credits, paused, raiseActive, PLAYER_ID]);
 
   // ===== BALLS =====
   const addBall = (n) => {
-    // if no assets exist, playSound should be a safe no-op in ../core/sound
     playSound("ball", 0.25);
 
     setBalls((b) => [...b, n]);
 
-    // only count as a "hit" if player selected it
     if (selectedRef.current.has(n)) {
       setHits((h) => new Set(h).add(n));
     }
@@ -503,7 +611,10 @@ const isLoggedIn = !!user;
 
   // ===== SPIN =====
   const spin = async () => {
-    if (!isLoggedIn) return;
+    if (!isLoggedIn) {
+      requestLogin();
+      return;
+    }
 
     playSound("spin", 0.6);
 
@@ -544,7 +655,10 @@ const isLoggedIn = !!user;
 
   // ===== RESUME =====
   const resume = async () => {
-    if (!isLoggedIn) return;
+    if (!isLoggedIn) {
+      requestLogin();
+      return;
+    }
     if (!paused) return;
 
     setPaused(false);
@@ -565,11 +679,9 @@ const isLoggedIn = !!user;
       p.history.totalPaidOut += payout;
       p.history.biggestWin = Math.max(p.history.biggestWin, payout);
       p.history.lastPlayedAt = Date.now();
-      // totalLosses computed in admin as:
-      // max(0, totalCreditsPlayed - totalPaidOut - totalAdminAdjustments)
     }
 
-    // per-spin audit log (separate from history object)
+    // per-spin audit log
     if (p?.historyLog) {
       p.historyLog.push({
         time: Date.now(),
@@ -586,10 +698,14 @@ const isLoggedIn = !!user;
   };
 
   return {
-    // auth gate flags for UI to block clicks + show overlay
+    // auth gate flags for UI
     authReady,
     isLoggedIn,
     loginRequired: authReady && !isLoggedIn,
+
+    // UI hook to open login modal on blocked actions
+    requestLogin,
+    loginPromptTick,
 
     // state
     selected,

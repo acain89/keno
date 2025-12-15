@@ -28,3 +28,24 @@
   color: #ff6b6b;
   margin-bottom: 10px;
 }
+
+.login-switch {
+  margin-top: 14px;
+  text-align: center;
+  background: none;
+  border: none;
+}
+
+.login-link {
+  color: #6fe7ff;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.login-link strong {
+  color: #9aff6b;
+}
+
+.login-link:hover {
+  text-decoration: underline;
+}

@@ -1,61 +1,62 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
+import { auth } from "../services/firebase";
+import { doc, getDoc, updateDoc } from "firebase/firestore";
+import { db } from "../services/firebase";
+import "./ProfilePanel.css";
 
-export default function LoginTab({ onLogin }) {
-  const [mode, setMode] = useState("login");
-  const [username, setUsername] = useState("");
-  const [password, setPassword] = useState("");
+export default function ProfilePanel({ onClose }) {
+  const [profile, setProfile] = useState(null);
   const [cashApp, setCashApp] = useState("");
+  const [saving, setSaving] = useState(false);
 
-  const submit = () => {
-    if (!username || !password) return;
+  useEffect(() => {
+    const user = auth.currentUser;
+    if (!user) return;
 
-    onLogin({
-      username,
-      credits: 0,
-      level: 0,
-      cashApp: mode === "create" ? cashApp : null,
+    getDoc(doc(db, "users", user.uid)).then((snap) => {
+      if (snap.exists()) {
+        setProfile(snap.data());
+        setCashApp(snap.data().cashApp || "");
+      }
     });
+  }, []);
+
+  const save = async () => {
+    if (!auth.currentUser) return;
+    setSaving(true);
+    await updateDoc(doc(db, "users", auth.currentUser.uid), {
+      cashApp: cashApp.trim(),
+    });
+    setSaving(false);
   };
 
+  if (!profile) return null;
+
   return (
-    <div className="login-tab">
-      <input
-        placeholder="Username"
-        value={username}
-        onChange={(e) => setUsername(e.target.value)}
-      />
+    <div className="profile-panel">
+      <h2>Profile</h2>
 
-      <input
-        type="password"
-        placeholder="Password"
-        value={password}
-        onChange={(e) => setPassword(e.target.value)}
-      />
+      <div className="profile-row">
+        <span>Username</span>
+        <strong>{profile.username}</strong>
+      </div>
 
-      {mode === "create" && (
-        <>
-          <input
-            placeholder="$Cash-App ID"
-            value={cashApp}
-            onChange={(e) => setCashApp(e.target.value)}
-          />
-          <div className="hint">
-            Cash-App ID is required for refunds.
-          </div>
-        </>
-      )}
+      <div className="profile-row">
+        <span>Cash App</span>
+        <input
+          value={cashApp}
+          onChange={(e) => setCashApp(e.target.value)}
+          placeholder="$player07"
+        />
+      </div>
 
-      <button onClick={submit}>SUBMIT</button>
+      <button className="btn" onClick={save} disabled={saving}>
+        {saving ? "Saving…" : "Save"}
+      </button>
 
-      {mode === "login" ? (
-        <div className="link" onClick={() => setMode("create")}>
-          Don’t have an account? Join here.
-        </div>
-      ) : (
-        <div className="link" onClick={() => setMode("login")}>
-          Back to login
-        </div>
-      )}
+      <button className="btn ghost" onClick={onClose}>
+        Close
+      </button>
     </div>
   );
 }
