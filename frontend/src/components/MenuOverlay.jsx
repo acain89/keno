@@ -21,7 +21,6 @@ export default function MenuOverlay({
     return () => window.removeEventListener("keydown", onKey);
   }, [open, onClose]);
 
-  // ✅ Unmount when closed so it can't block clicks
   if (!open) return null;
 
   return (
@@ -42,6 +41,7 @@ export default function MenuOverlay({
               className={tab === "profile" ? "active" : ""}
               onClick={() => setTab("profile")}
               disabled={!isLoggedIn}
+              title={!isLoggedIn ? "Login required" : ""}
             >
               PROFILE
             </button>

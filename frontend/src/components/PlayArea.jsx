@@ -13,7 +13,11 @@ export default function PlayArea({
   disabled,
 }) {
   return (
-    <div className={`play ${inBonus ? "play-bonus" : ""} ${disabled ? "play-disabled" : ""}`}>
+    <div
+      className={`play ${inBonus ? "play-bonus" : ""} ${
+        disabled ? "play-disabled" : ""
+      }`}
+    >
       <Grid
         selected={selected}
         hits={hits}

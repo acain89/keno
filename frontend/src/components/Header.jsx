@@ -12,9 +12,9 @@ export default function Header({
       <button
         className="profile-btn"
         onClick={onMenu}
-        disabled={!isLoggedIn}
+        // ✅ DO NOT disable — MENU must open login panel when logged out
         style={
-          isLoggedIn && menuPulse
+          menuPulse
             ? { boxShadow: "0 0 12px rgba(56,232,255,.35)" }
             : undefined
         }
@@ -24,10 +24,8 @@ export default function Header({
 
       {isLoggedIn ? (
         <>
-          <div className="username">{username}</div>
-          <div className="credits">
-            Credits: {Number(credits).toFixed(2)}
-          </div>
+          <div className="username">{username || "Player"}</div>
+          <div className="credits">Credits: {Number(credits || 0).toFixed(2)}</div>
         </>
       ) : (
         <div className="username muted">Login Required</div>
