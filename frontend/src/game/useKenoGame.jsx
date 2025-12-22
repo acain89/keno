@@ -1,7 +1,13 @@
 // src/game/useKenoGame.jsx
 import { useEffect, useRef, useState } from "react";
 import { createBillDirector, DIRECTOR_PATHS } from "./billDirector";
-import { doc, onSnapshot, getDoc } from "firebase/firestore";
+import {
+  doc,
+  onSnapshot,
+  getDoc,
+  updateDoc,
+  increment,
+} from "firebase/firestore";
 import { db } from "../services/firebase";
 import { auth } from "../services/firebase";
 import { playSound, setSoundEnabled } from "../core/sound";
@@ -31,7 +37,7 @@ const BILL_MULTIPLIERS = {
   7: { 1: 0, 2: 0, 3: 1, 4: 3, 5: 6, 6: 9, 7: 12 },
   8: { 1: 0, 2: 0, 3: 0, 4: 2, 5: 3, 6: 4, 7: 8, 8: 20 },
   9: { 1: 0, 2: 0, 3: 0, 4: 1, 5: 3, 6: 5, 7: 8, 8: 20 },
-  10: { 1: 0, 2: 0, 3: 0, 4: 1, 5: 3, 6: 5, 7: 8, 8: 20 },
+  10:{ 1: 0, 2: 0, 3: 0, 4: 1, 5: 3, 6: 5, 7: 8, 8: 20 },
 };
 
 const BIG_EVENT_MULT_BY_BASE_BET = {
@@ -80,58 +86,47 @@ function buildImmutableDraw({ selectedSet, desiredHitCount, forcedHits = [] }) {
 ============================================================ */
 
 export default function useKenoGame() {
+  const uid = auth.currentUser?.uid;
+  const userRef = uid ? doc(db, "users", uid) : null;
+
   const [livePath, setLivePath] = useState(DIRECTOR_PATHS.LOSER);
-  const lockedPathRef = useRef(null); // 🔒 PATH LOCK
-  const sessionStartedRef = useRef(false); // 🔒 PATH LOCK
+  const lockedPathRef = useRef(null);
+  const sessionStartedRef = useRef(false);
+  const adminLockRef = useRef(false);
 
-  const adminLockRef = useRef(false); // 🔒 ADMIN LOCK
-
-  /* ---------- AUTHORITATIVE PATH LISTENER ---------- */
+  /* ---------- SNAPSHOT (AUTHORITATIVE) ---------- */
   useEffect(() => {
-    const uid = auth.currentUser?.uid;
-    if (!uid) return;
+    if (!userRef) return;
 
-    const ref = doc(db, "users", uid);
-    const unsub = onSnapshot(ref, (snap) => {
+    return onSnapshot(userRef, (snap) => {
       const data = snap.data();
+      if (!data) return;
 
-      // 🔒 ADMIN LOCK state (always tracked)
-      adminLockRef.current = Boolean(data?.adminLock);
+      adminLockRef.current = Boolean(data.adminLock);
 
-      const p =
-        data?.path === DIRECTOR_PATHS.WINNER
-          ? DIRECTOR_PATHS.WINNER
-          : DIRECTOR_PATHS.LOSER;
-
-      // 🔒 If session not started, allow updates
       if (!sessionStartedRef.current) {
-        setLivePath(p);
+        setLivePath(
+          data.path === DIRECTOR_PATHS.WINNER
+            ? DIRECTOR_PATHS.WINNER
+            : DIRECTOR_PATHS.LOSER
+        );
       }
 
-      // 🔒 Credits sync only when safe (IDLE). Prevent mid-spin snap.
-      if (data && phase === "IDLE") {
-        const c = Number(data.credits ?? INITIAL_CREDITS);
-        creditsRef.current = c;
-        setCredits(c);
-      }
+      const c = Number(data.credits ?? INITIAL_CREDITS);
+      creditsRef.current = c;
+      setCredits(c);
     });
+  }, [uid]);
 
-    return unsub;
-  }, []);
-
-  /* ---------- BILL DIRECTOR ---------- */
+  /* ---------- DIRECTOR ---------- */
   const directorRef = useRef(null);
-
   useEffect(() => {
     const effectivePath = lockedPathRef.current ?? livePath;
-
     directorRef.current = createBillDirector({
       path: effectivePath,
       seed: "DEV",
     });
   }, [livePath]);
-
-  const ballsRef = useRef([]);
 
   const [selected, setSelected] = useState(new Set());
   const selectedRef = useRef(selected);
@@ -146,149 +141,103 @@ export default function useKenoGame() {
   const bet = BETS[betIndex];
 
   const [phase, setPhase] = useState("IDLE");
+  const [balls, setBalls] = useState([]);
+  const [hits, setHits] = useState(new Set());
+  const [lastWin, setLastWin] = useState(0);
 
   const drawRef = useRef([]);
   const revealCountRef = useRef(0);
   const stakeRef = useRef(0);
   const planRef = useRef(null);
-
-  const [balls, setBalls] = useState([]);
-  const [hits, setHits] = useState(new Set());
-  const [lastWin, setLastWin] = useState(0);
-
-  /* ---------- ONE-TIME INITIAL PULL (AUTH ONLY) ---------- */
-  useEffect(() => {
-    const uid = auth.currentUser?.uid;
-    if (!uid) return;
-
-    (async () => {
-      try {
-        const snap = await getDoc(doc(db, "users", uid));
-        const data = snap.data();
-        if (!data) return;
-
-        adminLockRef.current = Boolean(data.adminLock);
-
-        const c = Number(data.credits ?? INITIAL_CREDITS);
-        creditsRef.current = c;
-        setCredits(c);
-
-        const p =
-          data.path === DIRECTOR_PATHS.WINNER
-            ? DIRECTOR_PATHS.WINNER
-            : DIRECTOR_PATHS.LOSER;
-
-        if (!sessionStartedRef.current) setLivePath(p);
-      } catch {
-        // silent: fallback to INITIAL_CREDITS
-      }
-    })();
-  }, []);
+  const ballsRef = useRef([]);
 
   /* ===================== SPIN ===================== */
 
-const spin = async () => {
-  if (adminLockRef.current) {
-    console.warn("⛔ Admin lock active — spin blocked");
-    return;
-  }
+  const spin = async () => {
+    if (adminLockRef.current || phase !== "IDLE") return;
+    if (!directorRef.current || credits < bet || !selectedRef.current.size)
+      return;
 
-  if (phase !== "IDLE") return;
-  if (!directorRef.current) return;
-  if (credits < bet) return;
-  if (!selectedRef.current.size) return;
+    setSoundEnabled(true);
+    playSound("ball", 0.6);
 
-  // 🔓 first valid user gesture unlocks audio
-  setSoundEnabled(true);
+    if (!sessionStartedRef.current) {
+      lockedPathRef.current = livePath;
+      sessionStartedRef.current = true;
+    }
 
-  // 🔊 confirmed spin action
-  playSound("ball", 0.6);
+    setPhase("SPINNING");
+    setLastWin(0);
+    setHits(new Set());
+    setBalls([]);
 
-  // 🔒 LOCK PATH ON FIRST SPIN
-  if (!sessionStartedRef.current) {
-    lockedPathRef.current = livePath;
-    sessionStartedRef.current = true;
-  }
+    stakeRef.current = bet;
 
-  setPhase("SPINNING");
-  setLastWin(0);
-  setHits(new Set());
-  ballsRef.current = [];
-  setBalls([]);
+    await updateDoc(userRef, {
+      credits: increment(-bet),
+    });
 
-  stakeRef.current = bet;
-  creditsRef.current -= bet;
-  setCredits(creditsRef.current);
+    const plan = directorRef.current.next({
+      creditsNow: creditsRef.current - bet,
+      selectedCount: selectedRef.current.size,
+      stake: bet,
+      selectedSet: selectedRef.current,
+    });
 
-  const plan = directorRef.current.next({
-    creditsNow: creditsRef.current,
-    selectedCount: selectedRef.current.size,
-    stake: bet,
-    selectedSet: selectedRef.current,
-  });
+    planRef.current = plan;
 
-  planRef.current = plan;
+    drawRef.current = buildImmutableDraw({
+      selectedSet: selectedRef.current,
+      desiredHitCount: plan.desiredHitCount,
+      forcedHits: plan.forcedHits,
+    });
 
-  drawRef.current = buildImmutableDraw({
-    selectedSet: selectedRef.current,
-    desiredHitCount: plan.desiredHitCount,
-    forcedHits: plan.forcedHits,
-  });
+    revealCountRef.current = 0;
 
-  revealCountRef.current = 0;
+    for (let i = 0; i < PREVIEW_COUNT; i++) {
+      revealCountRef.current++;
+      ballsRef.current = drawRef.current.slice(0, revealCountRef.current);
+      setBalls(ballsRef.current);
+      setHits(
+        new Set(ballsRef.current.filter((n) => selectedRef.current.has(n)))
+      );
+      await delay(220);
+    }
 
-  for (let i = 0; i < PREVIEW_COUNT; i++) {
-    revealCountRef.current++;
-    ballsRef.current = drawRef.current.slice(0, revealCountRef.current);
-    setBalls(ballsRef.current);
-    setHits(
-      new Set(ballsRef.current.filter((n) => selectedRef.current.has(n)))
-    );
-    await delay(220); // 🔇 silent animation
-  }
-
-  setPhase("HALFTIME");
-};
-
+    setPhase("HALFTIME");
+  };
 
   /* ===================== RAISE ===================== */
 
-const raise = async () => {
-  if (adminLockRef.current) {
-    console.warn("⛔ Admin lock active — raise blocked");
-    return;
-  }
+  const raise = async () => {
+    if (adminLockRef.current || phase !== "HALFTIME") return;
+    if (creditsRef.current < bet) return;
 
-  if (phase !== "HALFTIME") return;
-  if (creditsRef.current < bet) return;
+    playSound("ball", 0.6);
 
-  // 🔊 confirmed user action
-  playSound("ball", 0.6);
+    stakeRef.current += bet;
 
-  stakeRef.current += bet;
-  creditsRef.current -= bet;
-  setCredits(creditsRef.current);
+    await updateDoc(userRef, {
+      credits: increment(-bet),
+    });
 
-  await resume();
-};
-
+    await resume();
+  };
 
   /* ===================== RESOLVE ===================== */
 
   const resume = async () => {
-    if (adminLockRef.current) {
-      console.warn("⛔ Admin lock active — resume blocked");
-      return;
-    }
+    if (adminLockRef.current || phase !== "HALFTIME") return;
 
-    if (phase !== "HALFTIME") return;
     setPhase("RESOLVE");
 
     while (revealCountRef.current < DRAW_SIZE) {
       revealCountRef.current++;
       ballsRef.current = drawRef.current.slice(0, revealCountRef.current);
       setBalls(ballsRef.current);
-      setHits(new Set(ballsRef.current.filter((n) => selectedRef.current.has(n))));
+      setHits(
+        new Set(ballsRef.current.filter((n) => selectedRef.current.has(n)))
+      );
       playSound("ball", 0.3);
       await delay(220);
     }
@@ -306,8 +255,9 @@ const raise = async () => {
     const payout = stakeRef.current * multiplier;
 
     if (payout > 0) {
-      creditsRef.current += payout;
-      setCredits(creditsRef.current);
+      await updateDoc(userRef, {
+        credits: increment(payout),
+      });
       setLastWin(payout);
       playSound("win", 0.5);
     }
