@@ -365,12 +365,24 @@ export function createBillDirector({ path = DIRECTOR_PATHS.WINNER, seed = "DEV" 
 
       let desiredHits = pickDesiredHits({ selectedCount, creditsNow, stake });
 
-      desiredHits = enforceCeiling({
-        selectedCount,
-        stake,
-        creditsNow,
-        desiredHits,
-      });
+// 🔒 HARD CAP: engine never awards more than 8 hits
+const MAX_AWARDED_HITS = 8;
+if (desiredHits > MAX_AWARDED_HITS) {
+  desiredHits = MAX_AWARDED_HITS;
+}
+
+// 🔒 SAFETY: never return an unpaid hit count
+if (desiredHits > 0 && billMultiplier(selectedCount, desiredHits) <= 0) {
+  desiredHits = minPaidHit(selectedCount) || 0;
+}
+
+desiredHits = enforceCeiling({
+  selectedCount,
+  stake,
+  creditsNow,
+  desiredHits,
+});
+
 
       const payout = stake * billMultiplier(selectedCount, desiredHits);
 
