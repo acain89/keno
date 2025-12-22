@@ -88,86 +88,88 @@ export default function Register() {
   };
 
   return (
-    <div className="register-panel">
-      <h2>Create Account</h2>
+    <div className="auth-page">
+      <div className="register-panel">
+        <h2>Create Account</h2>
 
-      <form onSubmit={handleSubmit} autoComplete="off">
-        {/* USERNAME */}
-        <div className="form-group">
-          <label>Username</label>
-          <input
-            className="login-input"
-            type="text"
-            name="un_field"
-            autoComplete="off"
-            spellCheck={false}
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
-            placeholder="Something classy."
-            required
-          />
-        </div>
-
-        {/* RECOVERY EMAIL */}
-        <div className="form-group">
-          <label>Recovery Email</label>
-          <input
-            className="login-input"
-            type="email"
-            name="recovery_email_field"
-            autoComplete="email"
-            value={recoveryEmail}
-            onChange={(e) => setRecoveryEmail(e.target.value)}
-            placeholder="It's required. I won't spam email you."
-            required
-          />
-        </div>
-
-        {/* PASSWORD */}
-        <div className="form-group">
-          <label>Password</label>
-          <input
-            className="login-input"
-            type="password"
-            name="new_password_field"
-            autoComplete="new-password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            placeholder="Something you will remember."
-            required
-          />
-        </div>
-
-        {/* CASH APP */}
-        <div className="form-group">
-          <label>Cash App ID</label>
-          <div className="cashapp-field">
-            <span className="cashapp-prefix">$</span>
+        <form onSubmit={handleSubmit} autoComplete="off">
+          {/* USERNAME */}
+          <div className="form-group">
+            <label>Username</label>
             <input
+              className="login-input"
               type="text"
-              name="cashapp_field"
+              name="un_field"
               autoComplete="off"
               spellCheck={false}
-              value={cashApp}
-              onChange={(e) =>
-                setCashApp(normalizeCashApp(e.target.value))
-              }
-              placeholder="cashtag (Don't type the $)"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              placeholder="Something classy."
               required
             />
           </div>
-        </div>
 
-        {error && <div className="auth-error">{error}</div>}
+          {/* RECOVERY EMAIL */}
+          <div className="form-group">
+            <label>Recovery Email</label>
+            <input
+              className="login-input"
+              type="email"
+              name="recovery_email_field"
+              autoComplete="email"
+              value={recoveryEmail}
+              onChange={(e) => setRecoveryEmail(e.target.value)}
+              placeholder="Required for account recovery."
+              required
+            />
+          </div>
 
-        <button
-          type="submit"
-          className="register-submit"
-          disabled={loading}
-        >
-          {loading ? "Creating..." : "Create Account"}
-        </button>
-      </form>
+          {/* PASSWORD */}
+          <div className="form-group">
+            <label>Password</label>
+            <input
+              className="login-input"
+              type="password"
+              name="new_password_field"
+              autoComplete="new-password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="Something you will remember."
+              required
+            />
+          </div>
+
+          {/* CASH APP */}
+          <div className="form-group">
+            <label>Cash App ID</label>
+            <div className="cashapp-field">
+              <span className="cashapp-prefix">$</span>
+              <input
+                type="text"
+                name="cashapp_field"
+                autoComplete="off"
+                spellCheck={false}
+                value={cashApp}
+                onChange={(e) =>
+                  setCashApp(normalizeCashApp(e.target.value))
+                }
+                placeholder='Cashtag (no "$")'
+                required
+              />
+            </div>
+          </div>
+
+          {error && <div className="auth-error">{error}</div>}
+
+          <button
+            type="submit"
+            className="register-submit"
+            disabled={loading}
+          >
+            {loading ? "Creating..." : "Create Account"}
+          </button>
+        </form>
+      </div>
     </div>
   );
 }

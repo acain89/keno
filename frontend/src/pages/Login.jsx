@@ -9,7 +9,6 @@ import {
 } from "firebase/firestore";
 import { useNavigate } from "react-router-dom";
 import { auth, db } from "../services/firebase";
-import "./login.css";
 
 export default function Login() {
   const [username, setUsername] = useState("");
@@ -28,7 +27,6 @@ export default function Login() {
       return;
     }
 
-    // ❌ Block email-style usernames
     if (username.includes("@")) {
       setError("Login uses username, not email.");
       return;
@@ -37,7 +35,6 @@ export default function Login() {
     setLoading(true);
 
     try {
-      // 🔍 Look up user by username
       const q = query(
         collection(db, "users"),
         where("username", "==", username),
@@ -61,9 +58,7 @@ export default function Login() {
         return;
       }
 
-      // 🔐 Firebase auth (email remains hidden)
       await signInWithEmailAndPassword(auth, email, password);
-      // App.jsx handles redirect on auth change
     } catch (err) {
       console.error("Login error:", err.code, err.message);
 
@@ -84,46 +79,58 @@ export default function Login() {
   };
 
   return (
-    <div className="login-root">
-      <form className="login-card" onSubmit={onSubmit}>
+    <div className="auth-page">
+      <div className="login-panel">
         <h2>Login</h2>
 
-        <input
-          type="text"
-          placeholder="Username"
-          value={username}
-          onChange={(e) => setUsername(e.target.value.trim())}
-          autoComplete="username"
-          required
-        />
+        <form onSubmit={onSubmit} autoComplete="off">
+          <div className="form-group">
+            <label>Username</label>
+            <input
+              className="login-input"
+              type="text"
+              value={username}
+              onChange={(e) => setUsername(e.target.value.trim())}
+              autoComplete="username"
+              required
+            />
+          </div>
 
-        <input
-          type="password"
-          placeholder="Password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          autoComplete="current-password"
-          required
-        />
+          <div className="form-group">
+            <label>Password</label>
+            <input
+              className="login-input"
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              autoComplete="current-password"
+              required
+            />
+          </div>
 
-        {error && <div className="login-error">{error}</div>}
-
-        <button className="btn primary" disabled={loading}>
-          {loading ? "Signing in…" : "Login"}
-        </button>
-
-        <div className="login-footer">
-          <span>Don’t have an account?</span>
+          {error && <div className="auth-error">{error}</div>}
 
           <button
-            type="button"
-            className="btn secondary create-account-btn"
-            onClick={() => navigate("/register")}
+            type="submit"
+            className="login-submit"
+            disabled={loading}
           >
-            Create Account
+            {loading ? "Signing in…" : "Login"}
           </button>
-        </div>
-      </form>
+
+          <div className="login-footer">
+            <span>Don’t have an account?</span>
+
+            <button
+              type="button"
+              className="create-account-btn"
+              onClick={() => navigate("/register")}
+            >
+              Create Account
+            </button>
+          </div>
+        </form>
+      </div>
     </div>
   );
 }
