@@ -7,7 +7,7 @@ import {
   getDocs,
   limit,
 } from "firebase/firestore";
-import { Link } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { auth, db } from "../services/firebase";
 import "./login.css";
 
@@ -16,6 +16,8 @@ export default function Login() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
+
+  const navigate = useNavigate();
 
   const onSubmit = async (e) => {
     e.preventDefault();
@@ -110,12 +112,16 @@ export default function Login() {
           {loading ? "Signing in…" : "Login"}
         </button>
 
-        {/* 👇 Create Account link */}
         <div className="login-footer">
           <span>Don’t have an account?</span>
-          <Link to="/register" className="create-account-link">
+
+          <button
+            type="button"
+            className="btn secondary create-account-btn"
+            onClick={() => navigate("/register")}
+          >
             Create Account
-          </Link>
+          </button>
         </div>
       </form>
     </div>
