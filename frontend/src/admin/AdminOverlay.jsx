@@ -189,20 +189,27 @@ export default function AdminOverlay({
                   </button>
                 </div>
 
-                <div className="admin-adjust">
+               <div className="admin-adjust">
   <input
-    type="number"
-    min="0"
-    inputMode="numeric"
+    type="text"
+    inputMode="decimal"
     placeholder="Amount"
     value={creditDelta}
-    onChange={(e) => setCreditDelta(e.target.value)}
+    onChange={(e) => {
+      const v = e.target.value;
+
+      // allow empty, "-", or valid integer
+      if (/^-?\d*$/.test(v)) {
+        setCreditDelta(v);
+      }
+    }}
   />
 
   <button onClick={applyManualAdjustment}>
     Apply
   </button>
 </div>
+
 
 
                 {/* QUICK BUTTONS (UNCHANGED) */}
