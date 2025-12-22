@@ -1,3 +1,5 @@
+// frontend/src/admin/AdminOverlay.jsx
+
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import {
@@ -100,7 +102,8 @@ export default function AdminOverlay({
 
   const applyManualAdjustment = async () => {
     const amt = Number(creditDelta);
-    if (!amt || amt <= 0) return;
+
+    if (!Number.isFinite(amt) || amt <= 0) return;
 
     const signed =
       adjustMode === "ADD" ? amt : -amt;
@@ -173,44 +176,36 @@ export default function AdminOverlay({
               <div className="admin-section">
                 <h3>Adjust Credits</h3>
 
-                {/* MODE TOGGLE */}
-                <div className="adjust-mode">
+                <div className="admin-adjust">
                   <button
-                    className={adjustMode === "ADD" ? "active" : ""}
+                    className={`sign-btn ${adjustMode === "ADD" ? "active" : ""}`}
                     onClick={() => setAdjustMode("ADD")}
                   >
-                    + Add
+                    +
                   </button>
+
                   <button
-                    className={adjustMode === "SUB" ? "active" : ""}
+                    className={`sign-btn ${adjustMode === "SUB" ? "active" : ""}`}
                     onClick={() => setAdjustMode("SUB")}
                   >
-                    − Subtract
+                    –
+                  </button>
+
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    placeholder="Amount"
+                    value={creditDelta}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      if (/^\d*$/.test(v)) setCreditDelta(v);
+                    }}
+                  />
+
+                  <button onClick={applyManualAdjustment}>
+                    Apply
                   </button>
                 </div>
-
-               <div className="admin-adjust">
-  <input
-    type="text"
-    inputMode="decimal"
-    placeholder="Amount"
-    value={creditDelta}
-    onChange={(e) => {
-      const v = e.target.value;
-
-      // allow empty, "-", or valid integer
-      if (/^-?\d*$/.test(v)) {
-        setCreditDelta(v);
-      }
-    }}
-  />
-
-  <button onClick={applyManualAdjustment}>
-    Apply
-  </button>
-</div>
-
-
 
                 {/* QUICK BUTTONS (UNCHANGED) */}
                 <div className="admin-actions">
