@@ -121,12 +121,16 @@ export default function useKenoGame() {
   /* ---------- DIRECTOR ---------- */
   const directorRef = useRef(null);
   useEffect(() => {
-    const effectivePath = lockedPathRef.current ?? livePath;
-    directorRef.current = createBillDirector({
-      path: effectivePath,
-      seed: "DEV",
-    });
-  }, [livePath]);
+  if (directorRef.current) return; // 🔒 DO NOT recreate
+
+  const effectivePath = lockedPathRef.current ?? livePath;
+
+  directorRef.current = createBillDirector({
+    path: effectivePath,
+    seed: "DEV",
+  });
+}, [livePath]);
+
 
   const [selected, setSelected] = useState(new Set());
   const selectedRef = useRef(selected);
