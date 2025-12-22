@@ -7,6 +7,7 @@ import {
   getDocs,
   limit,
 } from "firebase/firestore";
+import { Link } from "react-router-dom";
 import { auth, db } from "../services/firebase";
 import "./login.css";
 
@@ -108,6 +109,14 @@ export default function Login() {
         <button className="btn primary" disabled={loading}>
           {loading ? "Signing in…" : "Login"}
         </button>
+
+        {/* 👇 Create Account link */}
+        <div className="login-footer">
+          <span>Don’t have an account?</span>
+          <Link to="/register" className="create-account-link">
+            Create Account
+          </Link>
+        </div>
       </form>
     </div>
   );

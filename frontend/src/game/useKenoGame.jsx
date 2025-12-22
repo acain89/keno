@@ -187,84 +187,91 @@ export default function useKenoGame() {
 
   /* ===================== SPIN ===================== */
 
-  const spin = async () => {
-    setSoundEnabled(true); // 🔊 FIRST LINE — user gesture unlock
+const spin = async () => {
+  if (adminLockRef.current) {
+    console.warn("⛔ Admin lock active — spin blocked");
+    return;
+  }
 
-    if (adminLockRef.current) {
-      console.warn("⛔ Admin lock active — spin blocked");
-      return;
-    }
+  if (phase !== "IDLE") return;
+  if (!directorRef.current) return;
+  if (credits < bet) return;
+  if (!selectedRef.current.size) return;
 
-    if (phase !== "IDLE") return;
-    if (!directorRef.current) return;
-    if (credits < bet) return;
-    if (!selectedRef.current.size) return;
+  // 🔓 first valid user gesture unlocks audio
+  setSoundEnabled(true);
 
-    // 🔒 LOCK PATH ON FIRST SPIN
-    if (!sessionStartedRef.current) {
-      lockedPathRef.current = livePath;
-      sessionStartedRef.current = true;
-    }
+  // 🔊 confirmed spin action
+  playSound("ball", 0.6);
 
-    setPhase("SPINNING");
-    setLastWin(0);
-    setHits(new Set());
-    ballsRef.current = [];
-    setBalls([]);
+  // 🔒 LOCK PATH ON FIRST SPIN
+  if (!sessionStartedRef.current) {
+    lockedPathRef.current = livePath;
+    sessionStartedRef.current = true;
+  }
 
-    stakeRef.current = bet;
-    creditsRef.current -= bet;
-    setCredits(creditsRef.current);
+  setPhase("SPINNING");
+  setLastWin(0);
+  setHits(new Set());
+  ballsRef.current = [];
+  setBalls([]);
 
-    const plan = directorRef.current.next({
-      creditsNow: creditsRef.current,
-      selectedCount: selectedRef.current.size,
-      stake: bet,
-      selectedSet: selectedRef.current,
-    });
+  stakeRef.current = bet;
+  creditsRef.current -= bet;
+  setCredits(creditsRef.current);
 
-    planRef.current = plan;
+  const plan = directorRef.current.next({
+    creditsNow: creditsRef.current,
+    selectedCount: selectedRef.current.size,
+    stake: bet,
+    selectedSet: selectedRef.current,
+  });
 
-    drawRef.current = buildImmutableDraw({
-      selectedSet: selectedRef.current,
-      desiredHitCount: plan.desiredHitCount,
-      forcedHits: plan.forcedHits,
-    });
+  planRef.current = plan;
 
-    revealCountRef.current = 0;
+  drawRef.current = buildImmutableDraw({
+    selectedSet: selectedRef.current,
+    desiredHitCount: plan.desiredHitCount,
+    forcedHits: plan.forcedHits,
+  });
 
-    for (let i = 0; i < PREVIEW_COUNT; i++) {
-      revealCountRef.current++;
-      ballsRef.current = drawRef.current.slice(0, revealCountRef.current);
-      setBalls(ballsRef.current);
-      setHits(new Set(ballsRef.current.filter((n) => selectedRef.current.has(n))));
-      playSound("ball", 0.3);
-      await delay(220);
-    }
+  revealCountRef.current = 0;
 
-    setPhase("HALFTIME");
-  };
+  for (let i = 0; i < PREVIEW_COUNT; i++) {
+    revealCountRef.current++;
+    ballsRef.current = drawRef.current.slice(0, revealCountRef.current);
+    setBalls(ballsRef.current);
+    setHits(
+      new Set(ballsRef.current.filter((n) => selectedRef.current.has(n)))
+    );
+    await delay(220); // 🔇 silent animation
+  }
+
+  setPhase("HALFTIME");
+};
+
 
   /* ===================== RAISE ===================== */
 
-  const raise = async () => {
-    setSoundEnabled(true);
-    playSound("click", 0.2);
+const raise = async () => {
+  if (adminLockRef.current) {
+    console.warn("⛔ Admin lock active — raise blocked");
+    return;
+  }
 
-    if (adminLockRef.current) {
-      console.warn("⛔ Admin lock active — raise blocked");
-      return;
-    }
+  if (phase !== "HALFTIME") return;
+  if (creditsRef.current < bet) return;
 
-    if (phase !== "HALFTIME") return;
-    if (creditsRef.current < bet) return;
+  // 🔊 confirmed user action
+  playSound("ball", 0.6);
 
-    stakeRef.current += bet;
-    creditsRef.current -= bet;
-    setCredits(creditsRef.current);
+  stakeRef.current += bet;
+  creditsRef.current -= bet;
+  setCredits(creditsRef.current);
 
-    await resume();
-  };
+  await resume();
+};
+
 
   /* ===================== RESOLVE ===================== */
 
