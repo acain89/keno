@@ -237,3 +237,25 @@
   border-top: 1px solid rgba(120,190,255,0.15);
   margin: 16px 0;
 }
+
+.adjust-mode {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.adjust-mode button {
+  flex: 1;
+  padding: 8px;
+  border-radius: 8px;
+  border: 1px solid #4fd1ff;
+  background: transparent;
+  color: #4fd1ff;
+}
+
+.adjust-mode button.active {
+  background: #4fd1ff;
+  color: #000;
+  font-weight: bold;
+}
+

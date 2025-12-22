@@ -27,6 +27,10 @@ export default function AdminOverlay({
   const [auditLogs, setAuditLogs] = useState([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
 
+  /* ================= CREDIT ADJUST UI ================= */
+  const [creditDelta, setCreditDelta] = useState("");
+  const [adjustMode, setAdjustMode] = useState("ADD"); // ADD | SUB
+
   /* ================= LOAD HISTORY ================= */
   useEffect(() => {
     if (!selectedPlayer?.uid) {
@@ -77,7 +81,7 @@ export default function AdminOverlay({
   };
 
   const adjustCredits = async (amount) => {
-    if (!selectedPlayer) return;
+    if (!selectedPlayer || !amount) return;
 
     const ref = doc(db, "users", selectedPlayer.uid);
 
@@ -92,6 +96,17 @@ export default function AdminOverlay({
       ...p,
       credits: (p.credits || 0) + amount,
     }));
+  };
+
+  const applyManualAdjustment = async () => {
+    const amt = Number(creditDelta);
+    if (!amt || amt <= 0) return;
+
+    const signed =
+      adjustMode === "ADD" ? amt : -amt;
+
+    await adjustCredits(signed);
+    setCreditDelta("");
   };
 
   const assignRole = async (role) => {
@@ -141,9 +156,9 @@ export default function AdminOverlay({
           {/* PLAYER SEARCH */}
           <PlayerSearch onSelect={setSelectedPlayer} />
 
-          {/* SELECTED PLAYER */}
           {selectedPlayer && (
             <>
+              {/* PLAYER INFO */}
               <div className="admin-section">
                 <h3>Selected Player</h3>
 
@@ -157,6 +172,38 @@ export default function AdminOverlay({
               {/* CREDIT CONTROLS */}
               <div className="admin-section">
                 <h3>Adjust Credits</h3>
+
+                {/* MODE TOGGLE */}
+                <div className="adjust-mode">
+                  <button
+                    className={adjustMode === "ADD" ? "active" : ""}
+                    onClick={() => setAdjustMode("ADD")}
+                  >
+                    + Add
+                  </button>
+                  <button
+                    className={adjustMode === "SUB" ? "active" : ""}
+                    onClick={() => setAdjustMode("SUB")}
+                  >
+                    − Subtract
+                  </button>
+                </div>
+
+                {/* AMOUNT INPUT */}
+                <input
+                  type="number"
+                  min="0"
+                  inputMode="numeric"
+                  placeholder="Amount"
+                  value={creditDelta}
+                  onChange={(e) => setCreditDelta(e.target.value)}
+                />
+
+                <button onClick={applyManualAdjustment}>
+                  Apply Adjustment
+                </button>
+
+                {/* QUICK BUTTONS (UNCHANGED) */}
                 <div className="admin-actions">
                   <button onClick={() => adjustCredits(+5)}>+ $5</button>
                   <button onClick={() => adjustCredits(+10)}>+ $10</button>
