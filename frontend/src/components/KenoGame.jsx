@@ -1,10 +1,12 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import Header from "./Header";
 import PlayArea from "./PlayArea";
 import Footer from "./Footer";
 import MenuOverlay from "./MenuOverlay";
 import useKenoGame from "../game/useKenoGame";
 import AdminOverlay from "../admin/AdminOverlay";
+import { doc, onSnapshot } from "firebase/firestore";
+import { auth, db } from "../services/firebase";
 import "../keno.css";
 
 export default function KenoGame({ showAdmin, onCloseAdmin }) {
@@ -35,9 +37,31 @@ export default function KenoGame({ showAdmin, onCloseAdmin }) {
 
   /* ================= MENU STATE ================= */
   const [menuOpen, setMenuOpen] = useState(false);
-  const [menuTab, setMenuTab] = useState("login");
+  const [menuTab, setMenuTab] = useState("profile");
+
+  /* ================= USER PROFILE ================= */
+  const [username, setUsername] = useState("");
+  const [email, setEmail] = useState("");
 
   const paused = phase !== "IDLE";
+
+  /* ================= LOAD USER PROFILE ================= */
+  useEffect(() => {
+    if (!auth.currentUser) return;
+
+    const uid = auth.currentUser.uid;
+    const ref = doc(db, "users", uid);
+
+    const unsub = onSnapshot(ref, (snap) => {
+      if (!snap.exists()) return;
+
+      const data = snap.data();
+      setUsername(data.username || "");
+      setEmail(data.email || "");
+    });
+
+    return unsub;
+  }, []);
 
   return (
     <div className="shell">
@@ -58,12 +82,14 @@ export default function KenoGame({ showAdmin, onCloseAdmin }) {
         onClose={() => setMenuOpen(false)}
         isLoggedIn={true}
         credits={credits}
+        username={username}
+        email={email}
       />
 
       {/* HEADER */}
       <Header
-        isLoggedIn
-        username="keno-07"
+        isLoggedIn={true}
+        username={username}
         credits={credits}
         onMenu={() => setMenuOpen(true)}
       />

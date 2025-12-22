@@ -1,157 +1,234 @@
 import { useState } from "react";
 import {
-  signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
 } from "firebase/auth";
-import { auth, db } from "../services/firebase";
 import {
+  collection,
+  query,
+  where,
+  getDocs,
+  limit,
   doc,
   setDoc,
   serverTimestamp,
-  getDoc,
 } from "firebase/firestore";
-
-const USERNAME_DOMAIN = "@keno.game";
-
-const normalizeUsername = (u) =>
-  u.trim().toLowerCase().replace(/\s+/g, "");
+import { auth, db } from "../services/firebase";
 
 export default function LoginTab({ onLoginSuccess }) {
+  const [mode, setMode] = useState("login"); // login | register
+
+  // LOGIN
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+
+  // REGISTER (REQUIRED)
+  const [regUsername, setRegUsername] = useState("");
+  const [recoveryEmail, setRecoveryEmail] = useState("");
+  const [regPassword, setRegPassword] = useState("");
   const [cashApp, setCashApp] = useState("");
-  const [mode, setMode] = useState("login");
+
+  const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
 
-  const submit = async (e) => {
+  /* ======================================================
+     LOGIN
+  ====================================================== */
+  const handleLogin = async (e) => {
     e.preventDefault();
-    if (loading) return;
+    setError(null);
 
-    setError("");
-
-    const cleanUsername = normalizeUsername(username);
-    if (!cleanUsername || !password) {
-      setError("Username and password are required.");
+    if (!username || !password) {
+      setError("Enter username and password.");
       return;
     }
 
-    if (mode === "signup" && !cashApp.trim()) {
-      setError("Cash App ID is required.");
+    if (username.includes("@")) {
+      setError("Login uses username, not email.");
       return;
     }
 
-    const email = `${cleanUsername}${USERNAME_DOMAIN}`;
+    setLoading(true);
 
     try {
-      setLoading(true);
+      const q = query(
+        collection(db, "users"),
+        where("username", "==", username),
+        limit(1)
+      );
 
-      if (mode === "login") {
-        await signInWithEmailAndPassword(auth, email, password);
-      } else {
-        const cred = await createUserWithEmailAndPassword(
-          auth,
-          email,
-          password
-        );
-
-        const userRef = doc(db, "users", cred.user.uid);
-        const snap = await getDoc(userRef);
-
-        if (!snap.exists()) {
-          await setDoc(
-            userRef,
-            {
-              userId: cred.user.uid,
-              username: cleanUsername,
-              cashApp: cashApp.trim(),
-              createdAt: serverTimestamp(),
-            },
-            { merge: true }
-          );
-        }
+      const snap = await getDocs(q);
+      if (snap.empty) {
+        throw new Error("Invalid username or password.");
       }
+
+      const email = snap.docs[0].data().email;
+      await signInWithEmailAndPassword(auth, email, password);
 
       onLoginSuccess?.();
     } catch (err) {
-      if (err.code === "auth/user-not-found") {
-        setError("Account not found.");
-      } else if (err.code === "auth/wrong-password") {
-        setError("Incorrect password.");
-      } else if (err.code === "auth/email-already-in-use") {
-        setError("Username already taken.");
-      } else {
-        setError("Authentication failed.");
+      setError("Invalid username or password.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  /* ======================================================
+     REGISTER (FIXED)
+  ====================================================== */
+  const handleRegister = async (e) => {
+    e.preventDefault();
+    setError(null);
+
+    if (!regUsername || !recoveryEmail || !regPassword || !cashApp) {
+      setError("All fields are required.");
+      return;
+    }
+
+    if (regUsername.includes("@")) {
+      setError("Username cannot be an email address.");
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      // Enforce unique username
+      const q = query(
+        collection(db, "users"),
+        where("username", "==", regUsername),
+        limit(1)
+      );
+      const snap = await getDocs(q);
+      if (!snap.empty) {
+        throw new Error("Username already taken.");
       }
+
+      // Create auth user (email is recovery only)
+      const cred = await createUserWithEmailAndPassword(
+        auth,
+        recoveryEmail,
+        regPassword
+      );
+
+      const uid = cred.user.uid;
+
+      await setDoc(doc(db, "users", uid), {
+        uid,
+        username: regUsername,
+        email: recoveryEmail,
+        cashApp: cashApp.replace("$", ""),
+        credits: 0,
+        createdAt: serverTimestamp(),
+      });
+
+      await signInWithEmailAndPassword(auth, recoveryEmail, regPassword);
+
+      onLoginSuccess?.();
+    } catch (err) {
+      setError(err.message || "Account creation failed.");
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="login-panel">
-      <h2 className="login-title">
-        {mode === "login" ? "Login" : "Create Account"}
-      </h2>
+    <div className="login-tab">
+      {mode === "login" ? (
+        <form onSubmit={handleLogin}>
+          <h2>Login</h2>
 
-      <form onSubmit={submit} className="login-form" autoComplete="off">
-        <div className="login-field">
+          <input
+            type="text"
+            placeholder="Username"
+            autoComplete="username"
+            value={username}
+            onChange={(e) => setUsername(e.target.value.trim())}
+            required
+          />
+
+          <input
+            type="password"
+            placeholder="Password"
+            autoComplete="current-password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            required
+          />
+
+          {error && <div className="login-error">{error}</div>}
+
+          <button disabled={loading}>
+            {loading ? "Signing in…" : "Login"}
+          </button>
+
+          <p className="switch-auth">
+            Need an account?{" "}
+            <span onClick={() => setMode("register")}>Create Account</span>
+          </p>
+        </form>
+      ) : (
+        <form onSubmit={handleRegister} autoComplete="off">
+          <h2>Create Account</h2>
+
+          {/* USERNAME */}
           <label>Username</label>
           <input
             type="text"
-            value={username}
-            spellCheck={false}
-            onChange={(e) => setUsername(e.target.value)}
+            placeholder="Username (not email)"
+            autoComplete="off"
+            value={regUsername}
+            onChange={(e) => setRegUsername(e.target.value.trim())}
+            required
           />
-        </div>
 
-        <div className="login-field">
+          {/* RECOVERY EMAIL */}
+          <label>Recovery Email</label>
+          <input
+            type="email"
+            placeholder="Used only for account recovery"
+            autoComplete="email"
+            value={recoveryEmail}
+            onChange={(e) => setRecoveryEmail(e.target.value.trim())}
+            required
+          />
+
+          {/* PASSWORD */}
           <label>Password</label>
           <input
             type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
+            autoComplete="new-password"
+            value={regPassword}
+            onChange={(e) => setRegPassword(e.target.value)}
+            required
           />
-        </div>
 
-        {mode === "signup" && (
-          <div className="login-field">
-            <label>Cash App ID</label>
+          {/* CASH APP */}
+          <label>Cash App ID</label>
+          <div className="cashapp-field">
+            <span>$</span>
             <input
               type="text"
-              placeholder="$player07"
               value={cashApp}
-              onChange={(e) => setCashApp(e.target.value)}
+              onChange={(e) =>
+                setCashApp(e.target.value.replace("$", "").trim())
+              }
+              required
             />
           </div>
-        )}
 
-        {error && <div className="login-error">{error}</div>}
+          {error && <div className="login-error">{error}</div>}
 
-        <button
-          className="login-btn"
-          type="submit"
-          disabled={loading}
-        >
-          {loading
-            ? "Please wait…"
-            : mode === "login"
-            ? "Login"
-            : "Create Account"}
-        </button>
-      </form>
+          <button disabled={loading}>
+            {loading ? "Creating…" : "Create Account"}
+          </button>
 
-      <div className="login-switch">
-        {mode === "login" ? (
-          <span onClick={() => setMode("signup")}>
-            Don’t have an account? <strong>Create one</strong>
-          </span>
-        ) : (
-          <span onClick={() => setMode("login")}>
-            Already have an account? <strong>Login</strong>
-          </span>
-        )}
-      </div>
+          <p className="switch-auth">
+            Already have an account?{" "}
+            <span onClick={() => setMode("login")}>Login</span>
+          </p>
+        </form>
+      )}
     </div>
   );
 }

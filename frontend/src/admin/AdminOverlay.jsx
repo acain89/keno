@@ -6,6 +6,11 @@ import {
   where,
   orderBy,
   getDocs,
+  doc,
+  updateDoc,
+  increment,
+  serverTimestamp,
+  addDoc,
 } from "firebase/firestore";
 
 import { db } from "../services/firebase";
@@ -17,16 +22,12 @@ export default function AdminOverlay({
   hotkey,
   onResetSession,
 }) {
-  /* ======================================================
-     SELECTED PLAYER (TRACKING)
-  ====================================================== */
+  /* ================= PLAYER ================= */
   const [selectedPlayer, setSelectedPlayer] = useState(null);
   const [auditLogs, setAuditLogs] = useState([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
 
-  /* ======================================================
-     LOAD ADMIN HISTORY
-  ====================================================== */
+  /* ================= LOAD HISTORY ================= */
   useEffect(() => {
     if (!selectedPlayer?.uid) {
       setAuditLogs([]);
@@ -62,9 +63,51 @@ export default function AdminOverlay({
     };
   }, [selectedPlayer]);
 
-  /* ======================================================
-     SESSION RESET (ENGINE-ONLY)
-  ====================================================== */
+  /* ================= HELPERS ================= */
+  const logAdminAction = async (type, delta = null, meta = {}) => {
+    if (!selectedPlayer) return;
+
+    await addDoc(collection(db, "adminLogs"), {
+      type,
+      delta,
+      targetUid: selectedPlayer.uid,
+      meta,
+      timestamp: serverTimestamp(),
+    });
+  };
+
+  const adjustCredits = async (amount) => {
+    if (!selectedPlayer) return;
+
+    const ref = doc(db, "users", selectedPlayer.uid);
+
+    await updateDoc(ref, {
+      credits: increment(amount),
+    });
+
+    await logAdminAction("CREDIT_ADJUST", amount);
+
+    // optimistic UI update
+    setSelectedPlayer((p) => ({
+      ...p,
+      credits: (p.credits || 0) + amount,
+    }));
+  };
+
+  const assignRole = async (role) => {
+    if (!selectedPlayer) return;
+
+    const ref = doc(db, "users", selectedPlayer.uid);
+
+    await updateDoc(ref, {
+      adminOverride: { role },
+    });
+
+    await logAdminAction("ROLE_ASSIGN", null, { role });
+
+    alert(`Assigned role: ${role}`);
+  };
+
   const handleResetSession = () => {
     if (typeof onResetSession !== "function") return;
 
@@ -80,6 +123,7 @@ export default function AdminOverlay({
     onResetSession();
   };
 
+  /* ================= RENDER ================= */
   return createPortal(
     <div className="admin-overlay">
       <div className="admin-panel">
@@ -94,80 +138,85 @@ export default function AdminOverlay({
         </div>
 
         <div className="admin-body">
-          {/* ================= PLAYER SEARCH ================= */}
+          {/* PLAYER SEARCH */}
           <PlayerSearch onSelect={setSelectedPlayer} />
 
-          {/* ================= SELECTED PLAYER ================= */}
+          {/* SELECTED PLAYER */}
           {selectedPlayer && (
-            <div className="admin-section">
-              <h3>Selected Player</h3>
+            <>
+              <div className="admin-section">
+                <h3>Selected Player</h3>
 
-              <div className="admin-kv">
-                <div>
-                  <strong>Username:</strong>{" "}
-                  {selectedPlayer.username || "—"}
-                </div>
-                <div>
-                  <strong>Password:</strong>{" "}
-                  {selectedPlayer.password || "—"}
-                </div>
-                <div>
-                  <strong>Cash App:</strong>{" "}
-                  {selectedPlayer.cashApp || "—"}
-                </div>
-                <div>
-                  <strong>Credits:</strong>{" "}
-                  ${selectedPlayer.credits ?? 0}
+                <div className="admin-kv">
+                  <div><strong>Username:</strong> {selectedPlayer.username}</div>
+                  <div><strong>Cash App:</strong> {selectedPlayer.cashApp || "—"}</div>
+                  <div><strong>Credits:</strong> ${selectedPlayer.credits ?? 0}</div>
                 </div>
               </div>
 
-              <div style={{ marginTop: 12 }}>
-                <button
-                  className="btn danger"
-                  onClick={handleResetSession}
-                >
+              {/* CREDIT CONTROLS */}
+              <div className="admin-section">
+                <h3>Adjust Credits</h3>
+                <div className="admin-actions">
+                  <button onClick={() => adjustCredits(+5)}>+ $5</button>
+                  <button onClick={() => adjustCredits(+10)}>+ $10</button>
+                  <button onClick={() => adjustCredits(-5)} className="danger">− $5</button>
+                  <button onClick={() => adjustCredits(-10)} className="danger">− $10</button>
+                </div>
+              </div>
+
+              {/* ROLE ASSIGNMENT */}
+              <div className="admin-section">
+                <h3>Assign Outcome Role</h3>
+                <div className="admin-actions">
+                  <button onClick={() => assignRole("WINNER")}>Force WINNER</button>
+                  <button onClick={() => assignRole("LOSER")} className="danger">
+                    Force LOSER
+                  </button>
+                </div>
+              </div>
+
+              {/* SESSION RESET */}
+              <div className="admin-section">
+                <h3>Session Control</h3>
+                <button className="danger" onClick={handleResetSession}>
                   Reset Demo Session
                 </button>
-
-                <div className="admin-muted" style={{ marginTop: 6 }}>
+                <div className="admin-muted">
                   Session-only reset. Credits unchanged.
                 </div>
               </div>
-            </div>
-          )}
 
-          {/* ================= ADMIN HISTORY ================= */}
-          {selectedPlayer && (
-            <div className="admin-section">
-              <h3>Admin History</h3>
+              {/* HISTORY */}
+              <div className="admin-section">
+                <h3>Admin History</h3>
 
-              {loadingHistory && (
-                <div className="admin-muted">
-                  Loading history…
-                </div>
-              )}
+                {loadingHistory && (
+                  <div className="admin-muted">Loading history…</div>
+                )}
 
-              {!loadingHistory && auditLogs.length === 0 && (
-                <div className="admin-muted">
-                  No admin actions recorded.
-                </div>
-              )}
-
-              {!loadingHistory &&
-                auditLogs.map((log) => (
-                  <div key={log.id} className="admin-log">
-                    <div>
-                      <strong>{log.type}</strong>
-                      {log.delta != null && (
-                        <> · Δ {log.delta > 0 ? "+" : ""}{log.delta}</>
-                      )}
-                    </div>
-                    <div className="admin-muted">
-                      {log.timestamp?.toDate?.().toLocaleString() || "—"}
-                    </div>
+                {!loadingHistory && auditLogs.length === 0 && (
+                  <div className="admin-muted">
+                    No admin actions recorded.
                   </div>
-                ))}
-            </div>
+                )}
+
+                {!loadingHistory &&
+                  auditLogs.map((log) => (
+                    <div key={log.id} className="admin-log">
+                      <div>
+                        <strong>{log.type}</strong>
+                        {log.delta != null && (
+                          <> · Δ {log.delta > 0 ? "+" : ""}{log.delta}</>
+                        )}
+                      </div>
+                      <div className="admin-muted">
+                        {log.timestamp?.toDate?.().toLocaleString() || "—"}
+                      </div>
+                    </div>
+                  ))}
+              </div>
+            </>
           )}
         </div>
       </div>

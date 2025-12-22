@@ -1,18 +1,29 @@
 import React from "react";
+import { signOut } from "firebase/auth";
+import { auth } from "../services/firebase";
 import "./profile.css";
 
 export default function ProfileTab({
-  username = "Keno-07",
-  email = "acain89@gmail.com",
-  credits = 0,
-  onLogout = () => {},
+  username,
+  email,
+  credits,
+  onLogout,
 }) {
+  const handleLogout = async () => {
+    try {
+      await signOut(auth); // 🔐 real logout
+      onLogout?.();        // notify parent safely
+    } catch (err) {
+      console.error("Logout failed:", err);
+    }
+  };
+
   return (
     <div className="profile-panel">
       {/* HEADER */}
       <div className="profile-header">
         <div className="profile-title">PROFILE</div>
-        <button className="profile-close" onClick={onLogout}>
+        <button className="profile-close" onClick={handleLogout}>
           LOG OUT
         </button>
       </div>
@@ -20,14 +31,18 @@ export default function ProfileTab({
       {/* USER */}
       <div className="profile-top">
         <div>
-          <div className="profile-username">{username}</div>
-          <div className="profile-email">{email}</div>
+          <div className="profile-username">
+            {username || "—"}
+          </div>
+          <div className="profile-email">
+            {email || ""}
+          </div>
         </div>
       </div>
 
       {/* CREDITS */}
       <div className="profile-credits">
-        Credits: <span>${credits.toFixed(2)}</span>
+        Credits: <span>${Number(credits || 0).toFixed(2)}</span>
       </div>
 
       {/* INFO */}

@@ -1,12 +1,10 @@
 // src/game/useKenoGame.jsx
 import { useEffect, useRef, useState } from "react";
 import { createBillDirector, DIRECTOR_PATHS } from "./billDirector";
-import { doc, onSnapshot } from "firebase/firestore";
+import { doc, onSnapshot, getDoc } from "firebase/firestore";
 import { db } from "../services/firebase";
 import { auth } from "../services/firebase";
 import { playSound, setSoundEnabled } from "../core/sound";
-
-
 
 /* ============================================================
    CONFIG
@@ -33,7 +31,7 @@ const BILL_MULTIPLIERS = {
   7: { 1: 0, 2: 0, 3: 1, 4: 3, 5: 6, 6: 9, 7: 12 },
   8: { 1: 0, 2: 0, 3: 0, 4: 2, 5: 3, 6: 4, 7: 8, 8: 20 },
   9: { 1: 0, 2: 0, 3: 0, 4: 1, 5: 3, 6: 5, 7: 8, 8: 20 },
-  10:{ 1: 0, 2: 0, 3: 0, 4: 1, 5: 3, 6: 5, 7: 8, 8: 20 },
+  10: { 1: 0, 2: 0, 3: 0, 4: 1, 5: 3, 6: 5, 7: 8, 8: 20 },
 };
 
 const BIG_EVENT_MULT_BY_BASE_BET = {
@@ -77,16 +75,16 @@ function buildImmutableDraw({ selectedSet, desiredHitCount, forcedHits = [] }) {
   ]).slice(0, DRAW_SIZE);
 }
 
-
-
 /* ============================================================
    HOOK
 ============================================================ */
 
 export default function useKenoGame() {
   const [livePath, setLivePath] = useState(DIRECTOR_PATHS.LOSER);
-  const lockedPathRef = useRef(null);        // 🔒 PATH LOCK
-  const sessionStartedRef = useRef(false);   // 🔒 PATH LOCK
+  const lockedPathRef = useRef(null); // 🔒 PATH LOCK
+  const sessionStartedRef = useRef(false); // 🔒 PATH LOCK
+
+  const adminLockRef = useRef(false); // 🔒 ADMIN LOCK
 
   /* ---------- AUTHORITATIVE PATH LISTENER ---------- */
   useEffect(() => {
@@ -95,14 +93,26 @@ export default function useKenoGame() {
 
     const ref = doc(db, "users", uid);
     const unsub = onSnapshot(ref, (snap) => {
+      const data = snap.data();
+
+      // 🔒 ADMIN LOCK state (always tracked)
+      adminLockRef.current = Boolean(data?.adminLock);
+
       const p =
-        snap.data()?.path === DIRECTOR_PATHS.WINNER
+        data?.path === DIRECTOR_PATHS.WINNER
           ? DIRECTOR_PATHS.WINNER
           : DIRECTOR_PATHS.LOSER;
 
       // 🔒 If session not started, allow updates
       if (!sessionStartedRef.current) {
         setLivePath(p);
+      }
+
+      // 🔒 Credits sync only when safe (IDLE). Prevent mid-spin snap.
+      if (data && phase === "IDLE") {
+        const c = Number(data.credits ?? INITIAL_CREDITS);
+        creditsRef.current = c;
+        setCredits(c);
       }
     });
 
@@ -113,8 +123,7 @@ export default function useKenoGame() {
   const directorRef = useRef(null);
 
   useEffect(() => {
-    const effectivePath =
-      lockedPathRef.current ?? livePath;
+    const effectivePath = lockedPathRef.current ?? livePath;
 
     directorRef.current = createBillDirector({
       path: effectivePath,
@@ -147,16 +156,49 @@ export default function useKenoGame() {
   const [hits, setHits] = useState(new Set());
   const [lastWin, setLastWin] = useState(0);
 
+  /* ---------- ONE-TIME INITIAL PULL (AUTH ONLY) ---------- */
+  useEffect(() => {
+    const uid = auth.currentUser?.uid;
+    if (!uid) return;
+
+    (async () => {
+      try {
+        const snap = await getDoc(doc(db, "users", uid));
+        const data = snap.data();
+        if (!data) return;
+
+        adminLockRef.current = Boolean(data.adminLock);
+
+        const c = Number(data.credits ?? INITIAL_CREDITS);
+        creditsRef.current = c;
+        setCredits(c);
+
+        const p =
+          data.path === DIRECTOR_PATHS.WINNER
+            ? DIRECTOR_PATHS.WINNER
+            : DIRECTOR_PATHS.LOSER;
+
+        if (!sessionStartedRef.current) setLivePath(p);
+      } catch {
+        // silent: fallback to INITIAL_CREDITS
+      }
+    })();
+  }, []);
+
   /* ===================== SPIN ===================== */
 
-const spin = async () => {
-  setSoundEnabled(true); // 🔊 FIRST LINE — user gesture unlock
+  const spin = async () => {
+    setSoundEnabled(true); // 🔊 FIRST LINE — user gesture unlock
 
-  if (phase !== "IDLE") return;
-  if (!directorRef.current) return;
-  if (credits < bet) return;
-  if (!selectedRef.current.size) return;
+    if (adminLockRef.current) {
+      console.warn("⛔ Admin lock active — spin blocked");
+      return;
+    }
 
+    if (phase !== "IDLE") return;
+    if (!directorRef.current) return;
+    if (credits < bet) return;
+    if (!selectedRef.current.size) return;
 
     // 🔒 LOCK PATH ON FIRST SPIN
     if (!sessionStartedRef.current) {
@@ -195,7 +237,7 @@ const spin = async () => {
       revealCountRef.current++;
       ballsRef.current = drawRef.current.slice(0, revealCountRef.current);
       setBalls(ballsRef.current);
-      setHits(new Set(ballsRef.current.filter(n => selectedRef.current.has(n))));
+      setHits(new Set(ballsRef.current.filter((n) => selectedRef.current.has(n))));
       playSound("ball", 0.3);
       await delay(220);
     }
@@ -206,8 +248,14 @@ const spin = async () => {
   /* ===================== RAISE ===================== */
 
   const raise = async () => {
- setSoundEnabled(true);
-  playSound("click", 0.2);
+    setSoundEnabled(true);
+    playSound("click", 0.2);
+
+    if (adminLockRef.current) {
+      console.warn("⛔ Admin lock active — raise blocked");
+      return;
+    }
+
     if (phase !== "HALFTIME") return;
     if (creditsRef.current < bet) return;
 
@@ -221,6 +269,11 @@ const spin = async () => {
   /* ===================== RESOLVE ===================== */
 
   const resume = async () => {
+    if (adminLockRef.current) {
+      console.warn("⛔ Admin lock active — resume blocked");
+      return;
+    }
+
     if (phase !== "HALFTIME") return;
     setPhase("RESOLVE");
 
@@ -228,12 +281,12 @@ const spin = async () => {
       revealCountRef.current++;
       ballsRef.current = drawRef.current.slice(0, revealCountRef.current);
       setBalls(ballsRef.current);
-      setHits(new Set(ballsRef.current.filter(n => selectedRef.current.has(n))));
+      setHits(new Set(ballsRef.current.filter((n) => selectedRef.current.has(n))));
       playSound("ball", 0.3);
       await delay(220);
     }
 
-    const hitCount = ballsRef.current.filter(n =>
+    const hitCount = ballsRef.current.filter((n) =>
       selectedRef.current.has(n)
     ).length;
 
@@ -287,9 +340,8 @@ const spin = async () => {
     toggleCell: (n) => {
       if (phase !== "IDLE") return;
 
-
-  setSoundEnabled(true);
-  playSound("click", 0.15);
+      setSoundEnabled(true);
+      playSound("click", 0.15);
 
       const next = new Set(selectedRef.current);
       if (next.has(n)) next.delete(n);

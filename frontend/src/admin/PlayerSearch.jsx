@@ -6,27 +6,31 @@ import {
   doc,
   addDoc,
   serverTimestamp,
+  query,
+  where,
 } from "firebase/firestore";
-import { db } from "../services/firebase";
-import { auth } from "../services/firebase";
+import { db, auth } from "../services/firebase";
 import "./admin.css";
 
 const PATHS = ["LOSER", "WINNER"];
 const MAX_RESULTS = 8;
 
-export default function PlayerSearch({ onSelect }) {
-  const [term, setTerm] = useState("");
-  const [allUsers, setAllUsers] = useState([]);
-  const [results, setResults] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
-  const [adjust, setAdjust] = useState({});
-  const [pathEdit, setPathEdit] = useState({});
-  const [selectedUid, setSelectedUid] = useState(null);
+export default function PlayerSearch() {
+  console.log("✅ USING ADMIN PlayerSearch.jsx");
 
-  /* ======================================================
-     LOAD USERS (ADMIN SCOPE)
-  ====================================================== */
+  const [term, setTerm] = useState("");
+  const [users, setUsers] = useState([]);
+  const [results, setResults] = useState([]);
+  const [selected, setSelected] = useState(null);
+
+  const [creditDelta, setCreditDelta] = useState("");
+  const [path, setPath] = useState("LOSER");
+
+  const [loading, setLoading] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  /* ================= LOAD USERS ================= */
   useEffect(() => {
     let alive = true;
     setLoading(true);
@@ -37,97 +41,110 @@ export default function PlayerSearch({ onSelect }) {
         if (!alive) return;
 
         const rows = [];
-        snap.forEach((d) =>
-          rows.push({ uid: d.id, ...d.data() })
-        );
-        setAllUsers(rows);
-      } catch (e) {
+        snap.forEach((d) => rows.push({ uid: d.id, ...d.data() }));
+        setUsers(rows);
+      } catch {
         setError("Failed to load users.");
       } finally {
         if (alive) setLoading(false);
       }
     })();
 
-    return () => {
-      alive = false;
-    };
+    return () => (alive = false);
   }, []);
 
-  /* ======================================================
-     PREFIX FILTER (USERNAME OR CASHAPP)
-  ====================================================== */
+  /* ================= FILTER ================= */
   useEffect(() => {
     const q = term.trim().toLowerCase();
-    if (!q) {
-      setResults([]);
-      return;
-    }
+    if (!q) return setResults([]);
 
-    const matches = allUsers.filter((u) => {
+    const matches = users.filter((u) => {
       const un = (u.username || "").toLowerCase();
       const ca = (u.cashApp || "").toLowerCase();
       return un.startsWith(q) || ca.startsWith(q);
     });
 
     setResults(matches.slice(0, MAX_RESULTS));
-  }, [term, allUsers]);
+  }, [term, users]);
 
-  /* ======================================================
-     CREDIT ADJUST
-  ====================================================== */
-  const applyAdjustment = async (p) => {
-    const raw = adjust[p.uid];
-    const delta = Number(raw);
-    if (!raw || Number.isNaN(delta) || delta === 0) return;
+  /* ================= ADMIN UPDATE (AUTHORITATIVE) ================= */
+  const applyAdminUpdate = async ({
+    creditDelta = 0,
+    forcePath = null,
+  }) => {
+    if (!selected || busy) return;
 
-    const before = Number(p.credits) || 0;
-    const after = Math.max(0, before + delta);
-    const path = after === 0 ? "LOSER" : p.path || "LOSER";
+    setBusy(true);
 
-    await updateDoc(doc(db, "users", p.uid), {
-      credits: after,
-      path,
-    });
+    const ref = doc(db, "users", selected.uid);
 
-    await addDoc(collection(db, "adminLogs"), {
-      targetUid: p.uid,
-      type: "CREDIT_ADJUST",
-      delta,
-      before,
-      after,
-      path,
-      adminUid: auth.currentUser?.uid ?? "unknown",
-      timestamp: serverTimestamp(),
-    });
+    const beforeCredits = Number(selected.credits) || 0;
+    const delta = Number(creditDelta) || 0;
+    const afterCredits = Math.max(0, beforeCredits + delta);
 
-    setAllUsers((u) =>
-      u.map((x) => (x.uid === p.uid ? { ...x, credits: after, path } : x))
-    );
-    setAdjust((a) => ({ ...a, [p.uid]: "" }));
+    const nextPath =
+      forcePath ??
+      selected.path ??
+      (afterCredits === 0 ? "LOSER" : "WINNER");
+
+    try {
+      // 🔒 SINGLE AUTHORITATIVE WRITE
+      await updateDoc(ref, {
+        credits: afterCredits,
+        path: nextPath,
+        adminUpdatedAt: serverTimestamp(),
+      });
+
+      // 🧾 AUDIT LOG
+      await addDoc(collection(db, "adminLogs"), {
+        targetUid: selected.uid,
+        type: "ADMIN_UPDATE",
+        delta: delta || null,
+        beforeCredits,
+        afterCredits,
+        path: nextPath,
+        adminUid: auth.currentUser?.uid ?? "unknown",
+        timestamp: serverTimestamp(),
+      });
+
+      // 🔄 CONFIRMATION READ (NO GUESSING)
+      const confirmSnap = await getDocs(
+        query(collection(db, "users"), where("__name__", "==", selected.uid))
+      );
+
+      if (!confirmSnap.empty) {
+        const confirmed = confirmSnap.docs[0].data();
+
+        // ✅ UPDATE UI FROM CONFIRMED STATE
+        setSelected((s) => ({
+          ...s,
+          credits: confirmed.credits,
+          path: confirmed.path,
+        }));
+
+        setUsers((u) =>
+          u.map((x) =>
+            x.uid === selected.uid
+              ? {
+                  ...x,
+                  credits: confirmed.credits,
+                  path: confirmed.path,
+                }
+              : x
+          )
+        );
+      }
+
+      setCreditDelta("");
+    } catch (err) {
+      console.error("❌ Admin update failed:", err);
+      alert("Admin update failed. See console.");
+    } finally {
+      setBusy(false);
+    }
   };
 
-  /* ======================================================
-     PATH ASSIGN (AUTHORITATIVE)
-  ====================================================== */
-  const applyPath = async (p) => {
-    const path = pathEdit[p.uid];
-    if (!path || path === p.path) return;
-
-    await updateDoc(doc(db, "users", p.uid), { path });
-
-    await addDoc(collection(db, "adminLogs"), {
-      targetUid: p.uid,
-      type: "PATH_ASSIGN",
-      path,
-      adminUid: auth.currentUser?.uid ?? "unknown",
-      timestamp: serverTimestamp(),
-    });
-
-    setAllUsers((u) =>
-      u.map((x) => (x.uid === p.uid ? { ...x, path } : x))
-    );
-  };
-
+  /* ================= RENDER ================= */
   return (
     <div className="admin-card">
       <h3>Player Search</h3>
@@ -141,76 +158,82 @@ export default function PlayerSearch({ onSelect }) {
 
       {results.length > 0 && (
         <div className="admin-autocomplete">
-          {results.map((p) => (
+          {results.map((u) => (
             <div
-              key={p.uid}
+              key={u.uid}
               className={`admin-suggestion ${
-                selectedUid === p.uid ? "active" : ""
+                selected?.uid === u.uid ? "active" : ""
               }`}
               onClick={() => {
-                setSelectedUid(p.uid);
-                onSelect?.(p);
+                setSelected(u);
+                setPath(u.path || "LOSER");
               }}
             >
-              <strong>{p.username}</strong>
-              <span className="admin-muted">
-                {p.cashApp || "—"}
-              </span>
+              <strong>{u.username}</strong>
+              <span className="admin-muted">{u.cashApp || "—"}</span>
             </div>
           ))}
         </div>
       )}
 
-      {selectedUid &&
-        allUsers
-          .filter((u) => u.uid === selectedUid)
-          .map((p) => (
-            <div key={p.uid} className="admin-player">
-              <div className="admin-player-meta">
-                <div>UID: {p.uid}</div>
-                <div>Credits: {p.credits ?? 0}</div>
-                <div>Path: {p.path || "LOSER"}</div>
-              </div>
-
-              <div className="admin-adjust">
-                <input
-                  type="number"
-                  placeholder="+ / − credits"
-                  value={adjust[p.uid] || ""}
-                  onChange={(e) =>
-                    setAdjust((a) => ({
-                      ...a,
-                      [p.uid]: e.target.value,
-                    }))
-                  }
-                />
-                <button className="btn" onClick={() => applyAdjustment(p)}>
-                  Apply
-                </button>
-              </div>
-
-              <div className="admin-adjust">
-                <select
-                  value={pathEdit[p.uid] || p.path || "LOSER"}
-                  onChange={(e) =>
-                    setPathEdit((r) => ({
-                      ...r,
-                      [p.uid]: e.target.value,
-                    }))
-                  }
-                >
-                  {PATHS.map((p) => (
-                    <option key={p} value={p}>
-                      {p}
-                    </option>
-                  ))}
-                </select>
-                <button className="btn" onClick={() => applyPath(p)}>
-                  Set Path
-                </button>
-              </div>
+      {selected && (
+        <>
+          <div className="admin-section">
+            <h3>Selected Player</h3>
+            <div className="admin-kv">
+              <div>UID: {selected.uid}</div>
+              <div>Credits: ${selected.credits ?? 0}</div>
+              <div>Path: {selected.path || "LOSER"}</div>
             </div>
-          ))}
+          </div>
+
+          <div className="admin-section">
+            <h3>Adjust Credits</h3>
+            <div className="admin-adjust">
+              <input
+                type="number"
+                placeholder="+ / − credits"
+                value={creditDelta}
+                onChange={(e) => setCreditDelta(e.target.value)}
+                disabled={busy}
+              />
+              <button
+                className="btn"
+                disabled={busy}
+                onClick={() =>
+                  applyAdminUpdate({ creditDelta: Number(creditDelta) })
+                }
+              >
+                {busy ? "Updating…" : "Apply"}
+              </button>
+            </div>
+          </div>
+
+          <div className="admin-section">
+            <h3>Assign Outcome</h3>
+            <div className="admin-adjust">
+              <select
+                value={path}
+                onChange={(e) => setPath(e.target.value)}
+                disabled={busy}
+              >
+                {PATHS.map((p) => (
+                  <option key={p} value={p}>
+                    {p}
+                  </option>
+                ))}
+              </select>
+              <button
+                className="btn"
+                disabled={busy}
+                onClick={() => applyAdminUpdate({ forcePath: path })}
+              >
+                {busy ? "Updating…" : "Set Path"}
+              </button>
+            </div>
+          </div>
+        </>
+      )}
 
       {loading && <div className="admin-muted">Loading users…</div>}
       {error && <div className="admin-error">{error}</div>}

@@ -1,12 +1,17 @@
 import { useState } from "react";
 import { signInWithEmailAndPassword } from "firebase/auth";
-import { auth } from "../services/firebase";
-import { useNavigate } from "react-router-dom";
+import {
+  collection,
+  query,
+  where,
+  getDocs,
+  limit,
+} from "firebase/firestore";
+import { auth, db } from "../services/firebase";
 import "./login.css";
 
 export default function Login() {
-  const navigate = useNavigate();
-  const [email, setEmail] = useState("");
+  const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -14,13 +19,63 @@ export default function Login() {
   const onSubmit = async (e) => {
     e.preventDefault();
     setError(null);
+
+    if (!username || !password) {
+      setError("Enter username and password.");
+      return;
+    }
+
+    // ❌ Block email-style usernames
+    if (username.includes("@")) {
+      setError("Login uses username, not email.");
+      return;
+    }
+
     setLoading(true);
 
     try {
+      // 🔍 Look up user by username
+      const q = query(
+        collection(db, "users"),
+        where("username", "==", username),
+        limit(1)
+      );
+
+      const snap = await getDocs(q);
+
+      if (snap.empty) {
+        setError("Invalid username or password.");
+        setLoading(false);
+        return;
+      }
+
+      const userDoc = snap.docs[0].data();
+      const email = userDoc.email;
+
+      if (!email) {
+        setError("Account misconfigured. Contact support.");
+        setLoading(false);
+        return;
+      }
+
+      // 🔐 Firebase auth (email remains hidden)
       await signInWithEmailAndPassword(auth, email, password);
-      navigate("/"); // back to Keno
+      // App.jsx handles redirect on auth change
     } catch (err) {
-      setError(err.message);
+      console.error("Login error:", err.code, err.message);
+
+      switch (err.code) {
+        case "auth/wrong-password":
+        case "auth/invalid-credential":
+          setError("Invalid username or password.");
+          break;
+        case "auth/too-many-requests":
+          setError("Too many attempts. Try again later.");
+          break;
+        default:
+          setError("Login failed. Please try again.");
+      }
+
       setLoading(false);
     }
   };
@@ -31,10 +86,11 @@ export default function Login() {
         <h2>Login</h2>
 
         <input
-          type="email"
-          placeholder="Email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
+          type="text"
+          placeholder="Username"
+          value={username}
+          onChange={(e) => setUsername(e.target.value.trim())}
+          autoComplete="username"
           required
         />
 
@@ -43,6 +99,7 @@ export default function Login() {
           placeholder="Password"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
+          autoComplete="current-password"
           required
         />
 
