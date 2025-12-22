@@ -1,16 +1,60 @@
 import React from "react";
 import { kenoLifetime } from "../game/kenoLifetime";
 
+/**
+ * BucketLifetime
+ *
+ * Lifetime bucket aggregation by tier.
+ * READ-ONLY.
+ * HARD-GUARDED — must never crash.
+ */
+
 export default function BucketLifetime() {
-  const tiers = kenoLifetime.byTier || {};
+  // 🔒 HARD GUARD
+  if (!kenoLifetime || !kenoLifetime.byTier) {
+    return (
+      <div className="admin-section">
+        <h3>Bucket Lifetime Summary</h3>
+        <div style={{ opacity: 0.6 }}>
+          Lifetime bucket data not initialized.
+        </div>
+      </div>
+    );
+  }
+
+  const tiers = kenoLifetime.byTier;
+  const entries = Object.entries(tiers);
+
+  if (!entries.length) {
+    return (
+      <div className="admin-section">
+        <h3>Bucket Lifetime Summary</h3>
+        <div style={{ opacity: 0.6 }}>
+          No lifetime data available.
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="admin-section">
       <h3>Bucket Lifetime Summary</h3>
 
-      {Object.entries(tiers).map(([tier, l]) => {
-        const bootstrapInitial = l.bootstrapInitial || 0;
-        const bootstrapUsed = l.bootstrapUsed || 0;
+      {entries.map(([tier, l]) => {
+        if (!l) return null;
+
+        const spins = Number(l.spins || 0);
+        const wagered = Number(l.wagered || 0);
+        const paid = Number(l.paid || 0);
+
+        const bootstrapInitial = Number(l.bootstrapInitial || 0);
+        const bootstrapUsed = Number(l.bootstrapUsed || 0);
+
+        const driftIn = Number(l.driftIn || 0);
+        const driftBurned = Number(l.driftBurned || 0);
+
+        const maxBucket = Number(l.maxBucket || 0);
+        const maxPayout = Number(l.maxPayout || 0);
 
         return (
           <div
@@ -24,9 +68,9 @@ export default function BucketLifetime() {
           >
             <strong>Bet Tier: ${tier}</strong>
 
-            <div>Total Spins: {l.spins}</div>
-            <div>Total Wagered: ${l.wagered.toFixed(2)}</div>
-            <div>Total Paid Out: ${l.paid.toFixed(2)}</div>
+            <div>Total Spins: {spins}</div>
+            <div>Total Wagered: ${wagered.toFixed(2)}</div>
+            <div>Total Paid Out: ${paid.toFixed(2)}</div>
 
             <div style={{ marginTop: 6, color: "#ffb86b" }}>
               Bootstrap Initial: ${bootstrapInitial.toFixed(2)}
@@ -36,15 +80,15 @@ export default function BucketLifetime() {
             </div>
 
             <div style={{ marginTop: 6 }}>
-              Drift In: ${l.driftIn.toFixed(2)}
+              Drift In: ${driftIn.toFixed(2)}
             </div>
-            <div>Drift Burned: ${l.driftBurned.toFixed(2)}</div>
+            <div>Drift Burned: ${driftBurned.toFixed(2)}</div>
 
             <div style={{ opacity: 0.7 }}>
-              Max Bucket Ever: ${l.maxBucket.toFixed(2)}
+              Max Bucket Ever: ${maxBucket.toFixed(2)}
             </div>
             <div style={{ opacity: 0.7 }}>
-              Max Single Payout: ${l.maxPayout.toFixed(2)}
+              Max Single Payout: ${maxPayout.toFixed(2)}
             </div>
           </div>
         );

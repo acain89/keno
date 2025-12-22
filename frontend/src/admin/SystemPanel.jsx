@@ -1,71 +1,65 @@
-import React, { useEffect, useState } from "react";
-import { kenoSystem } from "../game/kenoSystem";
+import React from "react";
+import { kenoBuckets } from "../game/kenoBuckets";
+
+/**
+ * SystemPanel
+ *
+ * High-level engine + system diagnostics.
+ * READ-ONLY.
+ * MUST NEVER CRASH.
+ */
 
 export default function SystemPanel() {
-  const [, force] = useState(0);
+  // 🔒 HARD GUARD
+  if (!kenoBuckets) {
+    return (
+      <div className="admin-section">
+        <h3>System</h3>
+        <div style={{ opacity: 0.6 }}>
+          Engine not initialized.
+        </div>
+      </div>
+    );
+  }
 
-  useEffect(() => {
-    const id = setInterval(() => force(n => n + 1), 300);
-    return () => clearInterval(id);
-  }, []);
+  // Safe reads with fallbacks
+  const byTier = kenoBuckets.byTier || {};
+  const lifetime = kenoBuckets.lifetimeByTier || {};
 
-  const toggle = (key) => {
-    kenoSystem.flags[key] = !kenoSystem.flags[key];
-    force(n => n + 1);
-  };
+  const tierCount = Object.keys(byTier).length;
+  const lifetimeTierCount = Object.keys(lifetime).length;
 
-  const flags = kenoSystem.flags;
+  let totalLive = 0;
+  let totalDrift = 0;
+  let totalCap = 0;
+
+  Object.values(byTier).forEach((b) => {
+    if (!b) return;
+    totalLive += Number(b.B || 0);
+    totalDrift += Number(b.D || 0);
+    totalCap += Number(b.C || 0);
+  });
 
   return (
     <div className="admin-section">
-      <h3>System Controls</h3>
+      <h3>System</h3>
 
-      <Control
-        label="Disable Raise"
-        active={flags.disableRaise}
-        onClick={() => toggle("disableRaise")}
-      />
+      <div>Active Live Tiers: {tierCount}</div>
+      <div>Lifetime Tracked Tiers: {lifetimeTierCount}</div>
 
-      <Control
-        label="Disable Bonus"
-        active={flags.disableBonus}
-        onClick={() => toggle("disableBonus")}
-      />
+      <hr style={{ opacity: 0.25 }} />
 
-      <Control
-        label="Freeze Buckets"
-        active={flags.freezeBuckets}
-        onClick={() => toggle("freezeBuckets")}
-      />
+      <div>
+        Total Live Balance: ${totalLive.toFixed(2)}
+      </div>
 
-      <Control
-        label="Read-Only Mode"
-        active={flags.readOnlyMode}
-        onClick={() => toggle("readOnlyMode")}
-        danger
-      />
+      <div style={{ color: "#7CFF6B" }}>
+        Total Drift Balance: ${totalDrift.toFixed(2)}
+      </div>
+
+      <div style={{ opacity: 0.7 }}>
+        Total Cap Allocation: ${totalCap.toFixed(2)}
+      </div>
     </div>
-  );
-}
-
-function Control({ label, active, onClick, danger }) {
-  return (
-    <button
-      onClick={onClick}
-      style={{
-        display: "block",
-        marginBottom: 8,
-        padding: 8,
-        width: "100%",
-        background: active
-          ? danger ? "#FF3B3B" : "#7CFF6B"
-          : "#1b2038",
-        color: "#fff",
-        border: "none",
-        cursor: "pointer",
-      }}
-    >
-      {label}: {active ? "ON" : "OFF"}
-    </button>
   );
 }

@@ -1,32 +1,43 @@
 import React from "react";
 
+/**
+ * Cell
+ *
+ * Amber rule:
+ * - Drawn AND not selected
+ * Green rule:
+ * - Drawn AND selected
+ */
+
 export default function Cell({
   number,
-  isSelected,
-  isHit,
-  isDrawn,
-  showHeart,
+  selected,
+  hit,
+  drawn,
   onToggle,
   paused,
 }) {
+  const isHitSelected = drawn && selected;
+  const isHitOnly = drawn && !selected;
+
   const className = [
     "cell",
-    isSelected && "selected",
-    isDrawn && "drawn",   // ✅ yellow highlight
-    isHit && "hit",       // ✅ red hit (overrides drawn)
+    selected && "cell-selected",
+    isHitSelected && "cell-hit-selected",
+    isHitOnly && "cell-hit-only",
+    paused && "cell-paused",
   ]
     .filter(Boolean)
     .join(" ");
 
-  const handleClick = () => {
-    if (paused) return;
-    onToggle(number);
-  };
-
   return (
-    <div className={className} onClick={handleClick}>
-      <span>{number}</span>
-      {showHeart && <div className="heart">❤</div>}
+    <div
+      className={className}
+      onClick={() => {
+        if (!paused && onToggle) onToggle(number);
+      }}
+    >
+      <span className="cell-number">{number}</span>
     </div>
   );
 }

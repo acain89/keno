@@ -1,34 +1,36 @@
 import React from "react";
 import Cell from "./Cell";
 
+/**
+ * Grid
+ *
+ * Responsibilities:
+ * - Layout only
+ * - Pass factual state to Cell
+ * - NO visual decisions
+ */
+
 export default function Grid({
   selected = new Set(),
   hits = new Set(),
   drawn = new Set(),
   onToggle,
-  paused,
+  paused = false,
 }) {
-  const selectedArr = [...selected];
-
   return (
-    <div className="grid-wrap">
+    <div className={`grid-wrap ${paused ? "grid-paused" : ""}`}>
       <div className="grid">
         {Array.from({ length: 40 }, (_, i) => {
           const n = i + 1;
-
-          const isSelected = selected.has(n);
-          const isHit = hits.has(n);      // selected ∩ drawn
-          const isDrawn = drawn.has(n);   // all drawn numbers
 
           return (
             <Cell
               key={n}
               number={n}
-              isSelected={isSelected}
-              isHit={isHit}
-              isDrawn={isDrawn}
-              showHeart={isSelected && selectedArr.indexOf(n) < 4}
-              onToggle={onToggle}
+              selected={selected.has(n)}
+              hit={hits.has(n)}
+              drawn={drawn.has(n)}
+              onToggle={paused ? undefined : onToggle}
               paused={paused}
             />
           );

@@ -3,18 +3,33 @@ import React from "react";
 export default function Footer({
   bet,
   lastWin,
-  paused,
-  raiseActive,
+
+  // bonus
   inBonus,
   bonusSpinsLeft,
   bonusWinnings,
+
+  // engine flags (AUTHORITATIVE)
+  canSpin,
+  canDecision,
+  canRaise,
+  canBetChange,
+
+  // actions
   onSpin,
   onResume,
   onRaise,
   onIncBet,
   onDecBet,
 }) {
-  const betDisabled = paused || inBonus;
+  /**
+   * CANONICAL LOCK RULES
+   * - Bonus locks EVERYTHING
+   * - Only engine flags can enable actions
+   * - Disabled buttons are also functionally inert
+   */
+
+  const lockAll = inBonus;
 
   return (
     <div className={`footer ${inBonus ? "footer-bonus" : ""}`}>
@@ -31,38 +46,60 @@ export default function Footer({
       )}
 
       <div className="footer-row">
+        {/* BET */}
         <div className="bet-col">
-          <button className="btn" onClick={onIncBet} disabled={betDisabled}>
+          <button
+            type="button"
+            className={`btn ${canBetChange && !lockAll ? "pulse" : "disabled"}`}
+            disabled={!canBetChange || lockAll}
+            onClick={onIncBet}
+          >
             +
           </button>
 
-          <div className="bet-digital">
-            ${bet}
-            {!inBonus && raiseActive && <span className="x2">×2</span>}
-            {inBonus && <span className="x2">×2 BONUS</span>}
-          </div>
+          <div className="bet-digital">${bet}</div>
 
-          <button className="btn" onClick={onDecBet} disabled={betDisabled}>
+          <button
+            type="button"
+            className={`btn ${canBetChange && !lockAll ? "pulse" : "disabled"}`}
+            disabled={!canBetChange || lockAll}
+            onClick={onDecBet}
+          >
             −
           </button>
         </div>
 
-        <button className="btn spin" onClick={onSpin} disabled={paused || inBonus}>
+        {/* SPIN */}
+        <button
+          type="button"
+          className={`btn spin ${
+            canSpin && !lockAll ? "spin-active pulse" : "spin-disabled"
+          }`}
+          disabled={!canSpin || lockAll}
+          onClick={onSpin}
+        >
           SPIN
         </button>
 
+        {/* DECISION */}
         <div className="decision-col">
           <button
-            className={`btn keep ${paused && !inBonus ? "pulse" : ""}`}
-            disabled={!paused || inBonus}
+            type="button"
+            className={`btn keep ${
+              canDecision && !lockAll ? "pulse" : "disabled"
+            }`}
+            disabled={!canDecision || lockAll}
             onClick={onResume}
           >
             KEEP
           </button>
 
           <button
-            className={`btn raise ${paused && !inBonus ? "pulse" : ""}`}
-            disabled={!paused || inBonus}
+            type="button"
+            className={`btn raise ${
+              canRaise && !lockAll ? "pulse" : "disabled"
+            }`}
+            disabled={!canRaise || lockAll}
             onClick={onRaise}
           >
             RAISE

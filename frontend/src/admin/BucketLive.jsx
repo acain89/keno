@@ -1,47 +1,65 @@
 import React from "react";
 import { kenoBuckets } from "../game/kenoBuckets";
 
+/**
+ * BucketLive
+ *
+ * Displays LIVE bucket balances by tier.
+ * READ-ONLY.
+ * HARD-GUARDED — must never crash.
+ */
+
 export default function BucketLive() {
-  const tiers = kenoBuckets.byTier || {};
+  // 🔒 HARD GUARD
+  if (!kenoBuckets || !kenoBuckets.byTier) {
+    return (
+      <div className="admin-section">
+        <h3>Live Buckets</h3>
+        <div style={{ opacity: 0.6 }}>
+          Bucket data not initialized.
+        </div>
+      </div>
+    );
+  }
+
+  const tiers = kenoBuckets.byTier;
+  const entries = Object.entries(tiers);
+
+  if (!entries.length) {
+    return (
+      <div className="admin-section">
+        <h3>Live Buckets</h3>
+        <div style={{ opacity: 0.6 }}>
+          No active tiers.
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="admin-section">
       <h3>Live Buckets</h3>
 
-      {Object.entries(tiers).map(([tier, b]) => {
-        const bootstrapInitial = b.bootstrapInitial || 0;
-        const bootstrapRemaining = b.bootstrapRemaining || 0;
-        const realBalance = Math.max(0, b.B - bootstrapRemaining);
+      {entries.map(([tier, b]) => {
+        if (!b) return null;
 
-        const bootstrapPct =
-          b.B > 0 ? (bootstrapRemaining / b.B) * 100 : 0;
+        const B = Number(b.B || 0);
+        const D = Number(b.D || 0);
+        const C = Number(b.C || 0);
+        const F = Number(b.F || 0);
 
         return (
-          <div
-            key={tier}
-            style={{
-              border: "1px solid rgba(120,190,255,0.25)",
-              padding: 12,
-              marginBottom: 12,
-              borderRadius: 6,
-            }}
-          >
-            <strong>Bet Tier: ${tier}</strong>
-
-            <div>Bucket (Total): ${b.B.toFixed(2)}</div>
-            <div>Real Funds: ${realBalance.toFixed(2)}</div>
-
-            <div style={{ color: "#ffb86b" }}>
-              Bootstrap Remaining: ${bootstrapRemaining.toFixed(2)} (
-              {bootstrapPct.toFixed(1)}%)
-            </div>
-
+          <div key={tier} className="admin-row">
+            <strong>{tier}</strong>
+            <div>B: ${B.toFixed(2)}</div>
             <div style={{ color: "#7CFF6B" }}>
-              Drift Balance: ${b.D.toFixed(2)}
+              D: ${D.toFixed(2)}
             </div>
-
-            <div style={{ opacity: 0.7 }}>
-              Cap: ${b.C.toFixed(2)}
+            <div style={{ opacity: 0.75 }}>
+              C: ${C.toFixed(2)}
+            </div>
+            <div style={{ opacity: 0.5 }}>
+              F: ${F.toFixed(2)}
             </div>
           </div>
         );

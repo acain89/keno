@@ -1,31 +1,28 @@
+// src/components/Header.jsx
 import React from "react";
 
 export default function Header({
-  isLoggedIn,
-  username,
-  credits,
+  isLoggedIn = true,
+  username = "Player",
+  credits = 0,
   onMenu = () => {},
   menuPulse = true,
 }) {
   return (
     <div className="header">
       <button
-        className="profile-btn"
+        className={`profile-btn ${menuPulse ? "profile-pulse" : ""}`}
         onClick={onMenu}
-        // ✅ DO NOT disable — MENU must open login panel when logged out
-        style={
-          menuPulse
-            ? { boxShadow: "0 0 12px rgba(56,232,255,.35)" }
-            : undefined
-        }
       >
         MENU
       </button>
 
       {isLoggedIn ? (
         <>
-          <div className="username">{username || "Player"}</div>
-          <div className="credits">Credits: {Number(credits || 0).toFixed(2)}</div>
+          <div className="username">{username}</div>
+          <div className="credits">
+            Credits: {Number(credits).toFixed(2)}
+          </div>
         </>
       ) : (
         <div className="username muted">Login Required</div>
