@@ -1,9 +1,25 @@
 /* ======================================================
-   LOGIN / REGISTER PANEL (AUTHORITATIVE)
-   Mobile-first, single-column, no overlap
+   AUTH FORMS — SINGLE SOURCE OF TRUTH
 ====================================================== */
 
-.login-panel {
+/* ======================================================
+   AUTH PAGE CENTERING
+====================================================== */
+
+.auth-page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;      /* vertical center */
+  justify-content: center;  /* horizontal center */
+  padding: 20px;
+}
+
+/* ======================================================
+   PANELS
+====================================================== */
+
+.login-panel,
+.register-panel {
   width: 100%;
   max-width: 420px;
   margin: 0 auto;
@@ -15,15 +31,52 @@
 }
 
 /* ======================================================
+   HEADERS
+====================================================== */
+
+.login-panel h2,
+.register-panel h2 {
+  margin-bottom: 8px;
+}
+
+/* ======================================================
+   FIELD GROUPS (STACKING GUARANTEE)
+====================================================== */
+
+.form-row,
+.form-group,
+.register-row {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 6px;
+  width: 100%;
+}
+
+/* ======================================================
+   LABELS
+====================================================== */
+
+.form-row label,
+.form-group label,
+.register-row label {
+  display: block;
+  font-size: 13px;
+  color: #9aa0a6;
+}
+
+/* ======================================================
    INPUTS
 ====================================================== */
 
-.login-input {
+.login-input,
+.register-input,
+.form-row input,
+.form-group input {
   width: 100%;
   padding: 12px 14px;
 
   border-radius: 12px;
-  border: 1px solid rgba(120, 190, 255, 0.25);
+  border: 1.5px solid rgba(120, 190, 255, 0.45);
   background: rgba(0, 0, 0, 0.45);
 
   color: #eaf3ff;
@@ -31,51 +84,13 @@
   outline: none;
 }
 
-.login-input::placeholder {
+.login-input::placeholder,
+.register-input::placeholder {
   color: rgba(234, 243, 255, 0.55);
 }
 
 /* ======================================================
-   SUBMIT BUTTON
-====================================================== */
-
-.login-submit {
-  margin-top: 6px;
-  padding: 14px;
-
-  border-radius: 14px;
-  border: none;
-
-  background: linear-gradient(180deg, #7cff6b, #4fdc5f);
-  color: #000;
-
-  font-weight: 900;
-  letter-spacing: 0.05em;
-  cursor: pointer;
-}
-
-.login-submit:hover {
-  filter: brightness(1.05);
-}
-
-/* ======================================================
-   INLINE LINK (LOGIN / REGISTER SWITCH)
-====================================================== */
-
-.login-link {
-  margin-top: 6px;
-  font-size: 14px;
-  color: #38e8ff;
-  cursor: pointer;
-  text-align: center;
-}
-
-.login-link:hover {
-  text-decoration: underline;
-}
-
-/* ======================================================
-   CASH APP FIELD (CUSTOM COMPOSITE INPUT)
+   CASH APP FIELD (COMPOSITE INPUT)
 ====================================================== */
 
 .cashapp-field {
@@ -87,7 +102,7 @@
   padding: 0 12px;
 
   background: rgba(0, 0, 0, 0.55);
-  border: 1px solid rgba(120, 190, 255, 0.35);
+  border: 1.5px solid rgba(120, 190, 255, 0.45);
   border-radius: 12px;
 }
 
@@ -95,12 +110,6 @@
   color: #7cff6b;
   font-weight: 900;
   font-size: 18px;
-
-  line-height: 16px;
-  height: 16px;
-
-  display: flex;
-  align-items: center;
 }
 
 .cashapp-field input {
@@ -114,26 +123,51 @@
   font-size: 16px;
   padding: 0;
   margin: 0;
-  line-height: 16px;
 
-  display: block;
   outline: none;
 }
 
-.cashapp-note {
-  font-size: 13px;
-  color: #38e8ff;
-  margin-top: 4px;
-  text-align: left;
+/* ======================================================
+   FOCUS STATES (SUBTLE, PREMIUM)
+====================================================== */
+
+.login-input:focus,
+.form-group input:focus,
+.cashapp-field:focus-within {
+  border-color: rgba(124, 255, 107, 0.9);
 }
 
 /* ======================================================
-   CREATE ACCOUNT FOOTER (BUTTON STYLE)
+   BUTTONS
+====================================================== */
+
+.login-submit,
+.register-submit {
+  margin-top: 8px;
+  padding: 14px;
+
+  border-radius: 14px;
+  border: none;
+
+  background: linear-gradient(180deg, #7cff6b, #4fdc5f);
+  color: #000;
+
+  font-weight: 900;
+  letter-spacing: 0.05em;
+  cursor: pointer;
+}
+
+.login-submit:hover,
+.register-submit:hover {
+  filter: brightness(1.05);
+}
+
+/* ======================================================
+   CREATE ACCOUNT FOOTER
 ====================================================== */
 
 .login-footer {
   margin-top: 18px;
-
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -152,7 +186,7 @@
 
   border-radius: 10px;
   background: transparent;
-  border: 1px solid #4fd1ff;
+  border: 1.5px solid #4fd1ff;
 
   color: #4fd1ff;
   cursor: pointer;
@@ -163,15 +197,13 @@
 }
 
 /* ======================================================
-   SAFETY: FORCE SINGLE COLUMN ON SMALL SCREENS
+   SAFETY
 ====================================================== */
 
-@media (max-width: 640px) {
-  .login-panel {
-    padding: 14px;
-  }
+.register-panel * {
+  box-sizing: border-box;
+}
 
-  .login-panel > * {
-    width: 100%;
-  }
+.register-panel > * {
+  width: 100%;
 }
