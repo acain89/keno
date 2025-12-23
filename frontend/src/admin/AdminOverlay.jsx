@@ -1,10 +1,8 @@
 // frontend/src/admin/AdminOverlay.jsx
-
-import { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
-import { doc, updateDoc, increment } from "firebase/firestore";
-
-import { db } from "../services/firebase";
+import { collection, query, where, onSnapshot } from "firebase/firestore"; // ⬅ FIXED imports
+import { db, auth } from "../services/firebase"; // ⬅ merged into one line
 import PlayerSearch from "./PlayerSearch";
 import "./admin.css";
 
@@ -12,20 +10,29 @@ export default function AdminOverlay({ onClose, hotkey }) {
   /* ================= PLAYER ================= */
   const [selectedPlayer, setSelectedPlayer] = useState(null);
 
+  /* ================= ONLINE PLAYERS COUNTER ================= */
+  const [onlineCount, setOnlineCount] = useState(0); // ⬅ FIXED: inside component
+
+  useEffect(() => {
+    const q = query(collection(db, "users"), where("online", "==", true));
+    const unsub = onSnapshot(q, (snap) => {
+      setOnlineCount(snap.size);
+    });
+    return () => unsub();
+  }, []);
+
   /* ================= CREDIT ADJUST ================= */
   const [creditDelta, setCreditDelta] = useState("");
   const [adjustMode, setAdjustMode] = useState("ADD"); // ADD | SUB
 
   const adjustCredits = async (amount) => {
     if (!selectedPlayer || !amount) return;
-
     const ref = doc(db, "users", selectedPlayer.uid);
 
     await updateDoc(ref, {
       credits: increment(amount),
     });
 
-    // optimistic UI update
     setSelectedPlayer((p) => ({
       ...p,
       credits: (p.credits || 0) + amount,
@@ -33,14 +40,13 @@ export default function AdminOverlay({ onClose, hotkey }) {
   };
 
   const applyManualAdjustment = async () => {
+    if (!selectedPlayer?.uid) return;
     const amt = Number(creditDelta);
     if (!Number.isFinite(amt) || amt <= 0) return;
 
     const signed = adjustMode === "ADD" ? amt : -amt;
-
     const ref = doc(db, "users", selectedPlayer.uid);
 
-    // 🔑 ONLY CHANGE: persist role override on every Apply
     await updateDoc(ref, {
       credits: increment(signed),
       adminOverride: {
@@ -48,7 +54,6 @@ export default function AdminOverlay({ onClose, hotkey }) {
       },
     });
 
-    // optimistic UI update (unchanged pattern)
     setSelectedPlayer((p) => ({
       ...p,
       credits: (p.credits || 0) + signed,
@@ -61,7 +66,7 @@ export default function AdminOverlay({ onClose, hotkey }) {
   };
 
   /* ================= RENDER ================= */
-  return createPortal(
+  const panel = (
     <div className="admin-overlay">
       <div className="admin-panel">
         <div className="admin-header">
@@ -75,6 +80,11 @@ export default function AdminOverlay({ onClose, hotkey }) {
         </div>
 
         <div className="admin-body">
+          {/* ONLINE COUNTER (NOW VALID JSX) */}
+          <div className="admin-current-player">
+            Current Players: {onlineCount}
+          </div>
+
           {/* PLAYER SEARCH */}
           <PlayerSearch onSelect={setSelectedPlayer} />
 
@@ -102,21 +112,16 @@ export default function AdminOverlay({ onClose, hotkey }) {
               {/* CREDIT ADJUST */}
               <div className="admin-section">
                 <h3>Adjust Credits</h3>
-
                 <div className="admin-adjust">
                   <button
-                    className={`sign-btn ${
-                      adjustMode === "ADD" ? "active" : ""
-                    }`}
+                    className={`sign-btn ${adjustMode === "ADD" ? "active" : ""}`}
                     onClick={() => setAdjustMode("ADD")}
                   >
                     +
                   </button>
 
                   <button
-                    className={`sign-btn ${
-                      adjustMode === "SUB" ? "active" : ""
-                    }`}
+                    className={`sign-btn ${adjustMode === "SUB" ? "active" : ""}`}
                     onClick={() => setAdjustMode("SUB")}
                   >
                     –
@@ -129,8 +134,6 @@ export default function AdminOverlay({ onClose, hotkey }) {
                     value={creditDelta}
                     onChange={(e) => {
                       const v = e.target.value;
-
-                      // allow digits + ONE decimal point
                       if (/^\d*\.?\d*$/.test(v)) {
                         setCreditDelta(v);
                       }
@@ -144,7 +147,8 @@ export default function AdminOverlay({ onClose, hotkey }) {
           )}
         </div>
       </div>
-    </div>,
-    document.body
+    </div>
   );
+
+  return createPortal(panel, document.body); // unchanged usage
 }

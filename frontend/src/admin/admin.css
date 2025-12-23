@@ -278,3 +278,13 @@
   font-weight: bold;
 }
 
+.admin-current-player {
+  font-family: Orbitron, sans-serif;
+  text-align: center;
+  margin: 8px 0 16px;
+  font-size: 20px;
+  color: #0ff;
+  text-shadow: 0 0 12px #0ff;
+  letter-spacing: 2px;
+}
+
