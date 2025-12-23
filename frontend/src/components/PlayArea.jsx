@@ -2,13 +2,6 @@ import React from "react";
 import Grid from "./Grid";
 import Chute from "./Chute";
 
-/**
- * PlayArea
- *
- * - Owns layout only
- * - Bonus banner must NOT block footer clicks
- */
-
 export default function PlayArea({
   selected,
   hits,
@@ -17,28 +10,30 @@ export default function PlayArea({
   paused,
   inBonus,
   bonusBannerText,
+  locked, // 🔒 visual only
 }) {
-  const lockInput = paused || inBonus;
+  // Do NOT treat locked as a pause visual state
+  const lockClicks = paused || inBonus; // ⬅ removed locked from this line
+
+  const visualPaused = paused || inBonus;
   const drawnSet = new Set(balls);
 
   return (
     <div
-      className={`play ${inBonus ? "play-bonus" : ""}`}
-      style={{ position: "relative" }}   // ✅ CRITICAL FIX
+      className={`play-area-wrap keno-grid ${locked ? "run-locked" : ""}`} // ⬅ ensures CSS lock only when active
+      style={{ position: "relative", width: "100%", display: "flex", justifyContent: "center" }}
     >
-      {/* BONUS BANNER — NOW PROPERLY SCOPED */}
       {bonusBannerText && (
-        <div className="bonus-banner-overlay">
-          {bonusBannerText}
-        </div>
+        <div className="bonus-banner-overlay">{bonusBannerText}</div>
       )}
 
       <Grid
         selected={selected}
         hits={hits}
         drawn={drawnSet}
-        onToggle={lockInput ? undefined : onToggle}
-        paused={lockInput}
+        onToggle={lockClicks ? undefined : onToggle} // toggle restored when locked=false
+        paused={visualPaused}
+        locked={locked}
       />
 
       <Chute balls={balls} />

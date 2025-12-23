@@ -16,9 +16,14 @@ export default function Grid({
   drawn = new Set(),
   onToggle,
   paused = false,
+  locked = false,     // 🔒 NEW (factual only)
 }) {
   return (
-    <div className={`grid-wrap ${paused ? "grid-paused" : ""}`}>
+    <div
+      className={`grid-wrap ${paused ? "grid-paused" : ""} ${
+        locked ? "grid-locked" : ""
+      }`}
+    >
       <div className="grid">
         {Array.from({ length: 40 }, (_, i) => {
           const n = i + 1;
@@ -32,6 +37,7 @@ export default function Grid({
               drawn={drawn.has(n)}
               onToggle={paused ? undefined : onToggle}
               paused={paused}
+              locked={locked}   // 🔒 forward only
             />
           );
         })}

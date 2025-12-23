@@ -7,6 +7,8 @@ import React from "react";
  * - Drawn AND not selected
  * Green rule:
  * - Drawn AND selected
+ *
+ * Locked state is VISUAL ONLY
  */
 
 export default function Cell({
@@ -16,6 +18,7 @@ export default function Cell({
   drawn,
   onToggle,
   paused,
+  locked = false,   // 🔒 NEW (visual only)
 }) {
   const isHitSelected = drawn && selected;
   const isHitOnly = drawn && !selected;
@@ -26,6 +29,7 @@ export default function Cell({
     isHitSelected && "cell-hit-selected",
     isHitOnly && "cell-hit-only",
     paused && "cell-paused",
+    locked && "cell-locked",   // 🔒 visual hardening
   ]
     .filter(Boolean)
     .join(" ");
@@ -34,7 +38,7 @@ export default function Cell({
     <div
       className={className}
       onClick={() => {
-        if (!paused && onToggle) onToggle(number);
+        if (!paused && !locked && onToggle) onToggle(number);
       }}
     >
       <span className="cell-number">{number}</span>

@@ -27,7 +27,8 @@ html, body{
 }
 
 /* =========================================================
-   ROOT (DO NOT CENTER HERE)
+   ROOT (SCROLLABLE VIEWPORT)
+   - Fix: laptops can scroll when overlays/panels exceed fold
 ========================================================= */
 
 #root{
@@ -35,6 +36,8 @@ html, body{
   inset:0;
   background:
     radial-gradient(ellipse at center,#0b1220 0%,#05080f 70%);
+  overflow-y:auto;
+  -webkit-overflow-scrolling:touch;
 }
 
 /* Optional legacy wrapper */
@@ -44,19 +47,31 @@ html, body{
 }
 
 /* =========================================================
-   SHELL (RESTORED – THIS IS CRITICAL)
+   SHELL (SCROLL-SAFE)
+   - Fix: remove hard vertical centering trap (no-scroll)
+   - Keep "console centered" look via conditional centering
 ========================================================= */
 
 .shell{
-  position:absolute;
-  top:50%;
-  left:50%;
-  transform:translate(-50%,-50%);
-  width:max-content;
+  position:relative;
+  margin:0 auto;
   padding:12px;
   display:flex;
   flex-direction:column;
   gap:10px;
+
+  /* preserve your sizing behavior */
+  width:max-content;
+  max-width:100vw;
+}
+
+/* Center only when there's room (desktop/tall screens) */
+@media (min-height: 760px){
+  #root{
+    display:flex;
+    align-items:center;
+    justify-content:center;
+  }
 }
 
 /* =========================================================
@@ -101,6 +116,11 @@ html, body{
   display:flex;
   justify-content:center;
   gap:8px;
+}
+
+/* optional visual harden when locked */
+.play.play-locked{
+  /* do not block layout; visual only */
 }
 
 .grid-wrap{
@@ -187,6 +207,18 @@ html, body{
   color:var(--yellowBold);
 }
 
+/* Locked visual (run locked) */
+/* ✅ FIX: remove the fading — you said NO dimming */
+.cell-locked{
+  opacity:1 !important;
+  filter:none !important;
+}
+
+/* Optional: soften click feel when locked */
+.grid-locked .cell{
+  transition: opacity .15s ease, filter .15s ease, box-shadow .15s ease;
+}
+
 /* =========================================================
    CHUTE
 ========================================================= */
@@ -246,6 +278,14 @@ html, body{
   margin-bottom:4px;
 }
 
+/* Bet lock icon */
+.bet-lock{
+  margin-left:6px;
+  opacity:.85;
+  font-size:14px;
+  line-height:1;
+}
+
 /* =========================================================
    BUTTONS
 ========================================================= */
@@ -298,7 +338,6 @@ html, body{
 
 /* =========================================================
    PHASE LOCK: HALFTIME / BONUS (FADE + NO CLICK)
-   - Add .phase-halftime or .phase-bonus to .shell (or body)
 ========================================================= */
 
 .shell.phase-halftime .btn.spin,
@@ -308,7 +347,6 @@ html, body{
   pointer-events:none;
 }
 
-/* optional: dim whole footer controls */
 .shell.phase-halftime .footer,
 .shell.phase-bonus .footer{
   opacity:.92;
@@ -376,26 +414,23 @@ html, body{
   overflow:hidden;
 }
 
-/* overlay layer */
 .btn.spin::after{
   content:"";
   position:absolute;
   inset:0;
   border-radius:50%;
-  background:rgba(7,10,18,.65); /* match bg */
+  background:rgba(7,10,18,.65);
   opacity:0;
   transition:opacity .15s ease;
   pointer-events:none;
 }
 
-/* when spin should be disabled */
 .shell.spin-disabled .btn.spin::after,
 .shell.phase-halftime .btn.spin::after,
 .shell.phase-bonus .btn.spin::after{
   opacity:1;
 }
 
-/* optional: soften glow at same time */
 .shell.spin-disabled .btn.spin,
 .shell.phase-halftime .btn.spin,
 .shell.phase-bonus .btn.spin{
@@ -448,7 +483,6 @@ html, body{
   position: relative;
 }
 
-
 .cell-selected {
   background: radial-gradient(
     circle at center,
@@ -466,3 +500,166 @@ html, body{
     transparent 70%
   );
 }
+
+/* =========================================================
+   RUN LOCK / GAME OVER OVERLAYS  (CLEANED + OPAQUE + FIXED WIDTH)
+========================================================= */
+
+.run-overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 3000;
+  background: transparent;
+  pointer-events: auto;
+}
+
+.run-panel {
+  width: calc(5 * var(--cellSize) + 4 * var(--gap) + var(--chuteW) - 15px) !important;
+  position: fixed !important;
+  left: 50% !important;
+  top: 50% !important;
+  transform: translate(-50%, -50%) !important;
+  background: var(--legoGreen) !important;
+  opacity: 1 !important;
+  color: #000 !important;
+  text-align: center !important;
+  font-weight: 600 !important;
+  font-size: 17px !important;
+  border-radius: 14px !important;
+  padding: 14px 18px !important;
+}
+
+/* ✅ FIX: your buttons were flex-centered but not wrapped in a centered row in some panels */
+.run-btn-row{
+  display:flex;
+  justify-content:center;
+  align-items:center;
+  gap:12px;
+  width:100%;
+  margin-top:12px;
+}
+
+/* Buttons centered + spaced */
+.run-panel button,
+.run-panel .run-btn {
+  margin: 0 auto !important;
+  margin-top: 12px !important;
+  height: 36px !important;
+  padding: 0 18px !important;
+  background: #000 !important;
+  color: var(--legoGreen) !important;
+  border: 2px solid #000 !important;
+  border-radius: 8px !important;
+  font-weight: 600 !important;
+  font-size: 15px !important;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  cursor: pointer;
+}
+
+/* ✅ IMPORTANT: lock clicks only when run is active */
+.keno-grid.run-locked .cell {
+  pointer-events: none;
+}
+
+/* ✅ allow normal clicks when NOT run-locked */
+.keno-grid .cell {
+  pointer-events: auto;
+}
+
+/* ✅ FIX: FORCE GRID FULL VIBRANT ALWAYS (no opacity/filters) */
+.keno-grid,
+.grid,
+.grid-wrap{
+  opacity: 1 !important;
+  filter: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  animation: none !important;
+  mix-blend-mode: normal !important;
+}
+
+/* ✅ you had this wrapper referenced; keep harmless */
+.play-area-wrap {
+  opacity: 1 !important;
+  filter: brightness(1) !important;
+  -webkit-filter: brightness(1) !important;
+  background: none !important;
+  mix-blend-mode: normal !important;
+  pointer-events: auto !important;
+}
+
+.raise-float {
+  position: fixed;
+  bottom: 120px; /* sits just above the footer bet display */
+  left: 50%;
+  transform: translate(-50%, -6px);
+  font-size: 14px;
+  font-weight: 600;
+  background: var(--legoGreen);
+  color: #000;
+  padding: 6px 14px;
+  border-radius: 8px;
+  z-index: 5000;
+  pointer-events: none;
+  white-space: nowrap;
+  animation: raiseFade 0.8s ease-out forwards;
+}
+
+@keyframes raiseFade {
+  0%   { opacity: 1; transform: translate(-50%, 2px) scale(1.08); }
+  100% { opacity: 0; transform: translate(-50%, -10px) scale(1); }
+}
+
+.raise-float-overlay-footer-left {
+  position: fixed;
+  left: 50%;
+  bottom: 120px;
+  transform: translateX(-180px);
+  pointer-events: none;
+  backface-visibility: hidden;
+  contain: paint;
+  opacity: 0;
+  padding: 8px 16px;
+  font-size: 18px;
+  border-radius: 12px;
+  background: rgba(0,0,0,0.8);
+  color: #0ff;
+  text-shadow: 0 0 6px #0ff;
+  box-shadow: 0 0 10px #0ff;
+  z-index: 9999;
+}
+
+@keyframes bet2xToast {
+  0% {
+    opacity: 0;
+    transform: translateX(-180px) translateY(6px);
+  }
+  10% {
+    opacity: 1;
+    transform: translateX(-180px) translateY(0);
+  }
+  75% {
+    opacity: 1;
+    transform: translateX(-180px) translateY(0);
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(-180px) translateY(-4px);
+  }
+}
+
+
+
+
+/* FIX GAP BETWEEN GRID AND FOOTER */
+.footer {
+  margin-top: 0px !important;
+  padding-top: 12px;
+}
+

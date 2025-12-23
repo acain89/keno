@@ -1,12 +1,7 @@
 // src/game/useKenoGame.jsx
 import { useEffect, useRef, useState } from "react";
 import { createBillDirector, DIRECTOR_PATHS } from "./billDirector";
-import {
-  doc,
-  onSnapshot,
-  updateDoc,
-  increment,
-} from "firebase/firestore";
+import { doc, onSnapshot, updateDoc, increment } from "firebase/firestore";
 import { db } from "../services/firebase";
 import { auth } from "../services/firebase";
 import { playSound, setSoundEnabled } from "../core/sound";
@@ -36,7 +31,7 @@ const BILL_MULTIPLIERS = {
   7: { 1: 0, 2: 0, 3: 1, 4: 3, 5: 6, 6: 9, 7: 12 },
   8: { 1: 0, 2: 0, 3: 0, 4: 2, 5: 3, 6: 4, 7: 8, 8: 20 },
   9: { 1: 0, 2: 0, 3: 0, 4: 1, 5: 3, 6: 5, 7: 8, 8: 20 },
-  10:{ 1: 0, 2: 0, 3: 0, 4: 1, 5: 3, 6: 5, 7: 8, 8: 20 },
+  10: { 1: 0, 2: 0, 3: 0, 4: 1, 5: 3, 6: 5, 7: 8, 8: 20 },
 };
 
 const BIG_EVENT_MULT_BY_BASE_BET = {
@@ -94,6 +89,35 @@ export default function useKenoGame() {
   const sessionStartedRef = useRef(false);
   const adminLockRef = useRef(false);
 
+  const [selected, setSelected] = useState(new Set());
+  const selectedRef = useRef(selected);
+  useEffect(() => {
+    selectedRef.current = selected;
+  }, [selected]);
+
+  const [credits, setCredits] = useState(INITIAL_CREDITS);
+  const creditsRef = useRef(INITIAL_CREDITS);
+
+  const [betIndex, setBetIndex] = useState(2);
+  const bet = BETS[betIndex];
+
+  const [phase, setPhase] = useState("IDLE");
+  const [balls, setBalls] = useState([]);
+  const [hits, setHits] = useState(new Set());
+  const [lastWin, setLastWin] = useState(0);
+
+  const drawRef = useRef([]);
+  const revealCountRef = useRef(0);
+
+  // stake is the true wager for THIS spin (base + raises)
+  const stakeRef = useRef(0);
+
+  // ✅ base bet at spin start (used for Big Event multiplier mapping)
+  const baseBetRef = useRef(bet);
+
+  const planRef = useRef(null);
+  const ballsRef = useRef([]);
+
   /* ---------- SNAPSHOT (AUTHORITATIVE) ---------- */
   useEffect(() => {
     if (!userRef) return;
@@ -123,17 +147,14 @@ export default function useKenoGame() {
       creditsRef.current = c;
       setCredits(c);
     });
-  }, [uid]);
+  }, [uid, userRef]);
 
   /* ---------- DIRECTOR ---------- */
   const directorRef = useRef(null);
   useEffect(() => {
     const effectivePath = lockedPathRef.current ?? livePath;
 
-    if (
-      directorRef.current &&
-      directorPathRef.current === effectivePath
-    ) {
+    if (directorRef.current && directorPathRef.current === effectivePath) {
       return;
     }
 
@@ -145,35 +166,14 @@ export default function useKenoGame() {
     directorPathRef.current = effectivePath;
   }, [livePath]);
 
-  const [selected, setSelected] = useState(new Set());
-  const selectedRef = useRef(selected);
-  useEffect(() => {
-    selectedRef.current = selected;
-  }, [selected]);
-
-  const [credits, setCredits] = useState(INITIAL_CREDITS);
-  const creditsRef = useRef(INITIAL_CREDITS);
-
-  const [betIndex, setBetIndex] = useState(2);
-  const bet = BETS[betIndex];
-
-  const [phase, setPhase] = useState("IDLE");
-  const [balls, setBalls] = useState([]);
-  const [hits, setHits] = useState(new Set());
-  const [lastWin, setLastWin] = useState(0);
-
-  const drawRef = useRef([]);
-  const revealCountRef = useRef(0);
-  const stakeRef = useRef(0);
-  const planRef = useRef(null);
-  const ballsRef = useRef([]);
-
   /* ===================== SPIN ===================== */
 
   const spin = async () => {
     if (adminLockRef.current || phase !== "IDLE") return;
-    if (!directorRef.current || credits < bet || !selectedRef.current.size)
-      return;
+    if (!userRef) return;
+    if (!directorRef.current) return;
+    if (creditsRef.current < bet) return;
+    if (!selectedRef.current.size) return;
 
     setSoundEnabled(true);
     playSound("ball", 0.6);
@@ -187,6 +187,9 @@ export default function useKenoGame() {
     setLastWin(0);
     setHits(new Set());
     setBalls([]);
+
+    // ✅ capture base bet at spin start for Big Event mapping
+    baseBetRef.current = bet;
 
     stakeRef.current = bet;
 
@@ -228,6 +231,7 @@ export default function useKenoGame() {
 
   const raise = async () => {
     if (adminLockRef.current || phase !== "HALFTIME") return;
+    if (!userRef) return;
     if (creditsRef.current < bet) return;
 
     playSound("ball", 0.6);
@@ -245,6 +249,7 @@ export default function useKenoGame() {
 
   const resume = async () => {
     if (adminLockRef.current || phase !== "HALFTIME") return;
+    if (!userRef) return;
 
     setPhase("RESOLVE");
 
@@ -263,14 +268,12 @@ export default function useKenoGame() {
       selectedRef.current.has(n)
     ).length;
 
-    let multiplier = getBaseMultiplier(
-      selectedRef.current.size,
-      hitCount
-    );
+    let multiplier = getBaseMultiplier(selectedRef.current.size, hitCount);
 
+    // ✅ Big Event uses base bet captured at SPIN start
     if (planRef.current?.isBigEvent === true) {
-      multiplier =
-        BIG_EVENT_MULT_BY_BASE_BET[Number(bet)] ?? multiplier;
+      const baseBet = Number(baseBetRef.current);
+      multiplier = BIG_EVENT_MULT_BY_BASE_BET[baseBet] ?? multiplier;
     }
 
     const payout = stakeRef.current * multiplier;
@@ -312,8 +315,7 @@ export default function useKenoGame() {
       setBetIndex((i) => Math.min(i + 1, BETS.length - 1)),
 
     decBet: () =>
-      phase === "IDLE" &&
-      setBetIndex((i) => Math.max(i - 1, 0)),
+      phase === "IDLE" && setBetIndex((i) => Math.max(i - 1, 0)),
 
     toggleCell: (n) => {
       if (phase !== "IDLE") return;
