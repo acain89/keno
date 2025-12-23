@@ -175,6 +175,7 @@
 
 .admin-adjust button {
   height: 36px;
+  min-width: 36px;
   padding: 0 14px;
   border-radius: 8px;
   border: none;
@@ -187,6 +188,24 @@
 .admin-adjust button:hover {
   filter: brightness(1.05);
 }
+
+.admin-adjust .sign-btn {
+  width: 36px;
+  padding: 0;
+  font-size: 20px;
+  line-height: 36px;
+  text-align: center;
+
+  background: rgba(0,0,0,0.6);
+  color: #7CFF6B;
+  border: 1px solid rgba(124,255,107,0.6);
+}
+
+.admin-adjust .sign-btn.active {
+  background: #7CFF6B;
+  color: #000;
+}
+
 
 /* ======================================================
    SECTIONS

@@ -15,7 +15,7 @@ import "./admin.css";
 const PATHS = ["LOSER", "WINNER"];
 const MAX_RESULTS = 8;
 
-export default function PlayerSearch() {
+export default function PlayerSearch({ onSelect }) {
   console.log("✅ USING ADMIN PlayerSearch.jsx");
 
   const [term, setTerm] = useState("");
@@ -23,7 +23,6 @@ export default function PlayerSearch() {
   const [results, setResults] = useState([]);
   const [selected, setSelected] = useState(null);
 
-  const [creditDelta, setCreditDelta] = useState("");
   const [path, setPath] = useState("LOSER");
 
   const [loading, setLoading] = useState(false);
@@ -67,47 +66,28 @@ export default function PlayerSearch() {
     setResults(matches.slice(0, MAX_RESULTS));
   }, [term, users]);
 
-  /* ================= ADMIN UPDATE (AUTHORITATIVE) ================= */
-  const applyAdminUpdate = async ({
-    creditDelta = 0,
-    forcePath = null,
-  }) => {
+  /* ================= ADMIN UPDATE (PATH ONLY) ================= */
+  const applyAdminUpdate = async ({ forcePath }) => {
     if (!selected || busy) return;
 
     setBusy(true);
 
     const ref = doc(db, "users", selected.uid);
 
-    const beforeCredits = Number(selected.credits) || 0;
-    const delta = Number(creditDelta) || 0;
-    const afterCredits = Math.max(0, beforeCredits + delta);
-
-    const nextPath =
-      forcePath ??
-      selected.path ??
-      (afterCredits === 0 ? "LOSER" : "WINNER");
-
     try {
-      // 🔒 SINGLE AUTHORITATIVE WRITE
       await updateDoc(ref, {
-        credits: afterCredits,
-        path: nextPath,
+        path: forcePath,
         adminUpdatedAt: serverTimestamp(),
       });
 
-      // 🧾 AUDIT LOG
       await addDoc(collection(db, "adminLogs"), {
         targetUid: selected.uid,
-        type: "ADMIN_UPDATE",
-        delta: delta || null,
-        beforeCredits,
-        afterCredits,
-        path: nextPath,
+        type: "PATH_ASSIGN",
+        path: forcePath,
         adminUid: auth.currentUser?.uid ?? "unknown",
         timestamp: serverTimestamp(),
       });
 
-      // 🔄 CONFIRMATION READ (NO GUESSING)
       const confirmSnap = await getDocs(
         query(collection(db, "users"), where("__name__", "==", selected.uid))
       );
@@ -115,29 +95,21 @@ export default function PlayerSearch() {
       if (!confirmSnap.empty) {
         const confirmed = confirmSnap.docs[0].data();
 
-        // ✅ UPDATE UI FROM CONFIRMED STATE
         setSelected((s) => ({
           ...s,
-          credits: confirmed.credits,
           path: confirmed.path,
         }));
 
         setUsers((u) =>
           u.map((x) =>
             x.uid === selected.uid
-              ? {
-                  ...x,
-                  credits: confirmed.credits,
-                  path: confirmed.path,
-                }
+              ? { ...x, path: confirmed.path }
               : x
           )
         );
       }
-
-      setCreditDelta("");
     } catch (err) {
-      console.error("❌ Admin update failed:", err);
+      console.error("❌ Path update failed:", err);
       alert("Admin update failed. See console.");
     } finally {
       setBusy(false);
@@ -167,6 +139,7 @@ export default function PlayerSearch() {
               onClick={() => {
                 setSelected(u);
                 setPath(u.path || "LOSER");
+                onSelect?.(u); // 🔑 notify AdminOverlay
               }}
             >
               <strong>{u.username}</strong>
@@ -184,28 +157,6 @@ export default function PlayerSearch() {
               <div>UID: {selected.uid}</div>
               <div>Credits: ${selected.credits ?? 0}</div>
               <div>Path: {selected.path || "LOSER"}</div>
-            </div>
-          </div>
-
-          <div className="admin-section">
-            <h3>Adjust Credits</h3>
-            <div className="admin-adjust">
-              <input
-                type="number"
-                placeholder="+ / − credits"
-                value={creditDelta}
-                onChange={(e) => setCreditDelta(e.target.value)}
-                disabled={busy}
-              />
-              <button
-                className="btn"
-                disabled={busy}
-                onClick={() =>
-                  applyAdminUpdate({ creditDelta: Number(creditDelta) })
-                }
-              >
-                {busy ? "Updating…" : "Apply"}
-              </button>
             </div>
           </div>
 
