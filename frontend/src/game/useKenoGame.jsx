@@ -4,7 +4,6 @@ import { createBillDirector, DIRECTOR_PATHS } from "./billDirector";
 import {
   doc,
   onSnapshot,
-  getDoc,
   updateDoc,
   increment,
 } from "firebase/firestore";
@@ -91,6 +90,7 @@ export default function useKenoGame() {
 
   const [livePath, setLivePath] = useState(DIRECTOR_PATHS.LOSER);
   const lockedPathRef = useRef(null);
+  const directorPathRef = useRef(null);
   const sessionStartedRef = useRef(false);
   const adminLockRef = useRef(false);
 
@@ -104,12 +104,19 @@ export default function useKenoGame() {
 
       adminLockRef.current = Boolean(data.adminLock);
 
+      const role = data?.adminOverride?.role;
+
+      const effectivePath =
+        role === DIRECTOR_PATHS.WINNER
+          ? DIRECTOR_PATHS.WINNER
+          : role === DIRECTOR_PATHS.LOSER
+          ? DIRECTOR_PATHS.LOSER
+          : data.path === DIRECTOR_PATHS.WINNER
+          ? DIRECTOR_PATHS.WINNER
+          : DIRECTOR_PATHS.LOSER;
+
       if (!sessionStartedRef.current) {
-        setLivePath(
-          data.path === DIRECTOR_PATHS.WINNER
-            ? DIRECTOR_PATHS.WINNER
-            : DIRECTOR_PATHS.LOSER
-        );
+        setLivePath(effectivePath);
       }
 
       const c = Number(data.credits ?? INITIAL_CREDITS);
@@ -121,16 +128,22 @@ export default function useKenoGame() {
   /* ---------- DIRECTOR ---------- */
   const directorRef = useRef(null);
   useEffect(() => {
-  if (directorRef.current) return; // 🔒 DO NOT recreate
+    const effectivePath = lockedPathRef.current ?? livePath;
 
-  const effectivePath = lockedPathRef.current ?? livePath;
+    if (
+      directorRef.current &&
+      directorPathRef.current === effectivePath
+    ) {
+      return;
+    }
 
-  directorRef.current = createBillDirector({
-    path: effectivePath,
-    seed: "DEV",
-  });
-}, [livePath]);
+    directorRef.current = createBillDirector({
+      path: effectivePath,
+      seed: "DEV",
+    });
 
+    directorPathRef.current = effectivePath;
+  }, [livePath]);
 
   const [selected, setSelected] = useState(new Set());
   const selectedRef = useRef(selected);
@@ -250,10 +263,14 @@ export default function useKenoGame() {
       selectedRef.current.has(n)
     ).length;
 
-    let multiplier = getBaseMultiplier(selectedRef.current.size, hitCount);
+    let multiplier = getBaseMultiplier(
+      selectedRef.current.size,
+      hitCount
+    );
 
-    if (planRef.current?.isBigEvent === true && hitCount === 8) {
-      multiplier = BIG_EVENT_MULT_BY_BASE_BET[Number(bet)] ?? multiplier;
+    if (planRef.current?.isBigEvent === true) {
+      multiplier =
+        BIG_EVENT_MULT_BY_BASE_BET[Number(bet)] ?? multiplier;
     }
 
     const payout = stakeRef.current * multiplier;

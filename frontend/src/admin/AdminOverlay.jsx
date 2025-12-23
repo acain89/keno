@@ -38,7 +38,25 @@ export default function AdminOverlay({ onClose, hotkey }) {
 
     const signed = adjustMode === "ADD" ? amt : -amt;
 
-    await adjustCredits(signed);
+    const ref = doc(db, "users", selectedPlayer.uid);
+
+    // 🔑 ONLY CHANGE: persist role override on every Apply
+    await updateDoc(ref, {
+      credits: increment(signed),
+      adminOverride: {
+        role: adjustMode === "ADD" ? "WINNER" : "LOSER",
+      },
+    });
+
+    // optimistic UI update (unchanged pattern)
+    setSelectedPlayer((p) => ({
+      ...p,
+      credits: (p.credits || 0) + signed,
+      adminOverride: {
+        role: adjustMode === "ADD" ? "WINNER" : "LOSER",
+      },
+    }));
+
     setCreditDelta("");
   };
 
@@ -105,20 +123,19 @@ export default function AdminOverlay({ onClose, hotkey }) {
                   </button>
 
                   <input
-  type="text"
-  inputMode="decimal"
-  placeholder="Amount"
-  value={creditDelta}
-  onChange={(e) => {
-    const v = e.target.value;
+                    type="text"
+                    inputMode="decimal"
+                    placeholder="Amount"
+                    value={creditDelta}
+                    onChange={(e) => {
+                      const v = e.target.value;
 
-    // allow digits + ONE decimal point
-    if (/^\d*\.?\d*$/.test(v)) {
-      setCreditDelta(v);
-    }
-  }}
-/>
-
+                      // allow digits + ONE decimal point
+                      if (/^\d*\.?\d*$/.test(v)) {
+                        setCreditDelta(v);
+                      }
+                    }}
+                  />
 
                   <button onClick={applyManualAdjustment}>Apply</button>
                 </div>

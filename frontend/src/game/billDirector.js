@@ -30,7 +30,8 @@ const BILL_MULTIPLIERS = {
   5: { 1: 0, 2: 0, 3: 2, 4: 6, 5: 8 },
   6: { 1: 0, 2: 0, 3: 1, 4: 3, 5: 7, 6: 10 },
   7: { 1: 0, 2: 0, 3: 1, 4: 3, 5: 6, 6: 9, 7: 12 },
-  8: { 1: 0, 2: 0, 3: 0, 4: 2, 5: 3, 6: 4, 7: 8, 8: 15 },
+  // ✅ FIX: must match useKenoGame.jsx (8/8 is 20x)
+  8: { 1: 0, 2: 0, 3: 0, 4: 2, 5: 3, 6: 4, 7: 8, 8: 20 },
   9: { 1: 0, 2: 0, 3: 0, 4: 1, 5: 3, 6: 5, 7: 8, 8: 20 },
   10: { 1: 0, 2: 0, 3: 0, 4: 1, 5: 3, 6: 5, 7: 8, 8: 20 },
 };
@@ -196,49 +197,53 @@ export function createBillDirector({ path = DIRECTOR_PATHS.WINNER, seed = "DEV" 
     return false;
   }
 
+  // ✅ FIX: return both bucket + correct isBigEvent flag
   function pickOutcomeBucket(creditsNow) {
     pickRegime(creditsNow);
 
-    if (forceLossDueToSpacing()) return "LOSS";
+    if (forceLossDueToSpacing()) {
+      return { bucket: "LOSS", isBigEvent: false };
+    }
 
     if (path === DIRECTOR_PATHS.WINNER && state.regime === REGIMES.PAY_EVENT) {
+      // This spin IS the pay event
       state.payEventArmed = false;
       state.payEventUsed = true;
       state.regime = REGIMES.CRASH;
       state.postBig = true;
-      return "BIG";
+      return { bucket: "BIG", isBigEvent: true };
     }
 
     if (state.regime === REGIMES.BLEED) {
       const r = rng();
-      if (r < 0.70) return "LOSS";
+      if (r < 0.70) return { bucket: "LOSS", isBigEvent: false };
       if (r < 0.92) {
-        if (state.heat >= 2 && rng() < 0.20) return "LOSS";
-        return "SMALL";
+        if (state.heat >= 2 && rng() < 0.20) return { bucket: "LOSS", isBigEvent: false };
+        return { bucket: "SMALL", isBigEvent: false };
       }
-      if (state.drought >= 3) return "MEDIUM";
-      return "LOSS";
+      if (state.drought >= 3) return { bucket: "MEDIUM", isBigEvent: false };
+      return { bucket: "LOSS", isBigEvent: false };
     }
 
     if (state.regime === REGIMES.CRASH) {
       const r = rng();
       if (state.postBig) {
-        if (r < 0.75) return "LOSS";
-        if (r < 0.90) return "SMALL";
-        if (r < 0.95 && state.drought >= 3) return "MEDIUM";
-        return "LOSS";
+        if (r < 0.75) return { bucket: "LOSS", isBigEvent: false };
+        if (r < 0.90) return { bucket: "SMALL", isBigEvent: false };
+        if (r < 0.95 && state.drought >= 3) return { bucket: "MEDIUM", isBigEvent: false };
+        return { bucket: "LOSS", isBigEvent: false };
       }
-      if (r < 0.70) return "LOSS";
-      if (r < 0.90) return "SMALL";
-      if (state.drought >= 2) return "MEDIUM";
-      return "LOSS";
+      if (r < 0.70) return { bucket: "LOSS", isBigEvent: false };
+      if (r < 0.90) return { bucket: "SMALL", isBigEvent: false };
+      if (state.drought >= 2) return { bucket: "MEDIUM", isBigEvent: false };
+      return { bucket: "LOSS", isBigEvent: false };
     }
 
-    return "LOSS";
+    return { bucket: "LOSS", isBigEvent: false };
   }
 
-  function pickDesiredHits({ selectedCount, creditsNow, stake }) {
-    const bucket = pickOutcomeBucket(creditsNow);
+  // ✅ FIX: accept bucket instead of re-picking it internally
+  function pickDesiredHits({ bucket, selectedCount, creditsNow, stake }) {
     const loserMaxHits = maxHitsAtOrBelowMult(selectedCount, 10);
     const loserBigHits = Math.max(loserMaxHits, minPaidHit(selectedCount) || 0);
 
@@ -274,6 +279,7 @@ export function createBillDirector({ path = DIRECTOR_PATHS.WINNER, seed = "DEV" 
       return minPaidHit(selectedCount);
     }
 
+    // bucket === BIG (winner pay event)
     const targetLo = 101;
     const targetHi = ceiling != null ? Math.min(ceiling, 110) : 120;
     const row = BILL_MULTIPLIERS[selectedCount] || {};
@@ -359,30 +365,35 @@ export function createBillDirector({ path = DIRECTOR_PATHS.WINNER, seed = "DEV" 
         console.log(`Bill exited ${path} mode at $${ceiling}`);
       }
 
-      const wasPayEvent =
-        path === DIRECTOR_PATHS.WINNER &&
-        state.regime === REGIMES.PAY_EVENT;
+      // ✅ FIX: decide bucket FIRST, capture isBigEvent from the actual BIG selection
+      const outcome = pickOutcomeBucket(creditsNow);
+      const bucket = outcome.bucket;
+      const isBigEvent = outcome.isBigEvent === true;
 
-      let desiredHits = pickDesiredHits({ selectedCount, creditsNow, stake });
+      let desiredHits = pickDesiredHits({
+        bucket,
+        selectedCount,
+        creditsNow,
+        stake,
+      });
 
-// 🔒 HARD CAP: engine never awards more than 8 hits
-const MAX_AWARDED_HITS = 8;
-if (desiredHits > MAX_AWARDED_HITS) {
-  desiredHits = MAX_AWARDED_HITS;
-}
+      // 🔒 HARD CAP: engine never awards more than 8 hits
+      const MAX_AWARDED_HITS = 8;
+      if (desiredHits > MAX_AWARDED_HITS) {
+        desiredHits = MAX_AWARDED_HITS;
+      }
 
-// 🔒 SAFETY: never return an unpaid hit count
-if (desiredHits > 0 && billMultiplier(selectedCount, desiredHits) <= 0) {
-  desiredHits = minPaidHit(selectedCount) || 0;
-}
+      // 🔒 SAFETY: never return an unpaid hit count
+      if (desiredHits > 0 && billMultiplier(selectedCount, desiredHits) <= 0) {
+        desiredHits = minPaidHit(selectedCount) || 0;
+      }
 
-desiredHits = enforceCeiling({
-  selectedCount,
-  stake,
-  creditsNow,
-  desiredHits,
-});
-
+      desiredHits = enforceCeiling({
+        selectedCount,
+        stake,
+        creditsNow,
+        desiredHits,
+      });
 
       const payout = stake * billMultiplier(selectedCount, desiredHits);
 
@@ -405,7 +416,7 @@ desiredHits = enforceCeiling({
         desiredHitCount: desiredHits,
         bonusSpins: null,
         projectedPayout: payout,
-        isBigEvent: wasPayEvent,
+        isBigEvent, // ✅ FIX: now true exactly on the Pay Event spin
         forcedHits,
         forcedMisses,
         _debug: {
@@ -417,6 +428,7 @@ desiredHits = enforceCeiling({
           cooldown: state.cooldown,
           nextWinAllowedAt: state.nextWinAllowedAt,
           ceiling,
+          bucket,
         },
       };
     },
