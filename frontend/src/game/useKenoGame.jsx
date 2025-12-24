@@ -9,7 +9,6 @@ import { playSound, setSoundEnabled } from "../core/sound";
 /* ============================================================
    CONFIG
 ============================================================ */
-
 const BETS = [0.25, 0.5, 1.0, 2.0];
 const MAX_SELECT = 10;
 const DRAW_SIZE = 10;
@@ -20,7 +19,6 @@ const delay = (ms) => new Promise((r) => setTimeout(r, ms));
 /* ============================================================
    PAYTABLE
 ============================================================ */
-
 const BILL_MULTIPLIERS = {
   1: { 1: 2 },
   2: { 1: 1, 2: 2 },
@@ -47,7 +45,6 @@ const getBaseMultiplier = (sel, hits) =>
 /* ============================================================
    HELPERS
 ============================================================ */
-
 function shuffle(arr) {
   const a = [...arr];
   for (let i = a.length - 1; i > 0; i--) {
@@ -60,9 +57,12 @@ function shuffle(arr) {
 function buildImmutableDraw({ selectedSet, desiredHitCount, forcedHits = [] }) {
   const hits = forcedHits.length
     ? forcedHits.slice(0, desiredHitCount)
-    : shuffle([...selectedSet]).slice(0, desiredHitCount);
+    : shuffle([...selectedSet]).slice(0, Math.min(desiredHitCount, 10));
 
-  const hitSet = new Set(hits);
+  // enforce MAX 8 hits safely without breaking path logic
+  const cappedHits = hits.slice(0, 8);
+
+  const hitSet = new Set(cappedHits);
   const misses = [];
 
   for (let i = 1; i <= 40; i++) {
@@ -70,15 +70,14 @@ function buildImmutableDraw({ selectedSet, desiredHitCount, forcedHits = [] }) {
   }
 
   return shuffle([
-    ...hits,
-    ...shuffle(misses).slice(0, DRAW_SIZE - hits.length),
+    ...cappedHits,
+    ...shuffle(misses).slice(0, DRAW_SIZE - cappedHits.length),
   ]).slice(0, DRAW_SIZE);
 }
 
 /* ============================================================
    HOOK
 ============================================================ */
-
 export default function useKenoGame() {
   const uid = auth.currentUser?.uid;
   const userRef = uid ? doc(db, "users", uid) : null;
@@ -108,13 +107,8 @@ export default function useKenoGame() {
 
   const drawRef = useRef([]);
   const revealCountRef = useRef(0);
-
-  // stake is the true wager for THIS spin (base + raises)
   const stakeRef = useRef(0);
-
-  // ✅ base bet at spin start (used for Big Event multiplier mapping)
   const baseBetRef = useRef(bet);
-
   const planRef = useRef(null);
   const ballsRef = useRef([]);
 
@@ -130,6 +124,7 @@ export default function useKenoGame() {
 
       const role = data?.adminOverride?.role;
 
+      // ✅ FIXED: only 2 paths exist; fallback must be LOSER
       const effectivePath =
         role === DIRECTOR_PATHS.WINNER
           ? DIRECTOR_PATHS.WINNER
@@ -167,7 +162,6 @@ export default function useKenoGame() {
   }, [livePath]);
 
   /* ===================== SPIN ===================== */
-
   const spin = async () => {
     if (adminLockRef.current || phase !== "IDLE") return;
     if (!userRef) return;
@@ -188,9 +182,7 @@ export default function useKenoGame() {
     setHits(new Set());
     setBalls([]);
 
-    // ✅ capture base bet at spin start for Big Event mapping
     baseBetRef.current = bet;
-
     stakeRef.current = bet;
 
     await updateDoc(userRef, {
@@ -228,7 +220,6 @@ export default function useKenoGame() {
   };
 
   /* ===================== RAISE ===================== */
-
   const raise = async () => {
     if (adminLockRef.current || phase !== "HALFTIME") return;
     if (!userRef) return;
@@ -246,7 +237,6 @@ export default function useKenoGame() {
   };
 
   /* ===================== RESOLVE ===================== */
-
   const resume = async () => {
     if (adminLockRef.current || phase !== "HALFTIME") return;
     if (!userRef) return;
@@ -264,13 +254,14 @@ export default function useKenoGame() {
       await delay(220);
     }
 
-    const hitCount = ballsRef.current.filter((n) =>
+    // enforce MAX 8 hits
+    let hitCount = ballsRef.current.filter((n) =>
       selectedRef.current.has(n)
     ).length;
+    if (hitCount > 8) hitCount = 8;
 
     let multiplier = getBaseMultiplier(selectedRef.current.size, hitCount);
 
-    // ✅ Big Event uses base bet captured at SPIN start
     if (planRef.current?.isBigEvent === true) {
       const baseBet = Number(baseBetRef.current);
       multiplier = BIG_EVENT_MULT_BY_BASE_BET[baseBet] ?? multiplier;
@@ -291,7 +282,6 @@ export default function useKenoGame() {
   };
 
   /* ===================== API ===================== */
-
   return {
     selected,
     balls,
@@ -319,7 +309,6 @@ export default function useKenoGame() {
 
     toggleCell: (n) => {
       if (phase !== "IDLE") return;
-
       setSoundEnabled(true);
       playSound("click", 0.15);
 

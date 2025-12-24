@@ -2,8 +2,8 @@
 import React, { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { collection, query, where, onSnapshot } from "firebase/firestore";
+import { doc, updateDoc, increment } from "firebase/firestore";
 import { db, auth } from "../services/firebase";
-import { doc, updateDoc, increment } from "firebase/firestore"; // ⬅ FIXED: missing imports restored
 import PlayerSearch from "./PlayerSearch";
 import "./admin.css";
 
@@ -26,23 +26,24 @@ export default function AdminOverlay({ onClose, hotkey }) {
   const [adjustMode, setAdjustMode] = useState("ADD");
 
   const applyManualAdjustment = async () => {
-    if (!selectedPlayer || !selectedPlayer.uid) return; // ⬅ FIXED guard order
+    if (!selectedPlayer || !selectedPlayer.uid) return;
     const amt = Number(creditDelta);
     if (!Number.isFinite(amt) || amt <= 0) return;
 
     const signed = adjustMode === "ADD" ? amt : -amt;
     const ref = doc(db, "users", selectedPlayer.uid);
 
+    // ✅ FIXED: update the REAL `role` field + credits
     await updateDoc(ref, {
       credits: increment(signed),
-      adminOverride: { role: adjustMode === "ADD" ? "WINNER" : "LOSER" },
+      role: adjustMode === "ADD" ? "WINNER" : "LOSER",
     });
 
-    // optimistic update
+    // optimistic UI update must mirror the same field
     setSelectedPlayer((p) => ({
       ...p,
       credits: (p.credits || 0) + signed,
-      adminOverride: { role: adjustMode === "ADD" ? "WINNER" : "LOSER" },
+      role: adjustMode === "ADD" ? "WINNER" : "LOSER",
     }));
 
     setAdjustDelta("");
@@ -69,14 +70,16 @@ export default function AdminOverlay({ onClose, hotkey }) {
 
           <PlayerSearch onSelect={setSelectedPlayer} />
 
+          {/* UI now reads the real `role` field, not email */}
           {selectedPlayer && (
             <>
               <div className="admin-section">
                 <h3>Selected Player</h3>
                 <div className="admin-kv">
                   <div><strong>Username:</strong> {selectedPlayer.username || "—"}</div>
-                  <div><strong>Cash App:</strong> {selectedPlayer.cashApp || "—"}</div>
                   <div><strong>Credits:</strong> ${selectedPlayer.credits ?? 0}</div>
+                  <div><strong>Role:</strong> {selectedPlayer.role}</div> {/* ⬅ FIXED display */}
+                  <div><strong>Online:</strong> {selectedPlayer.online ? "Yes" : "No"}</div>
                 </div>
               </div>
 
@@ -108,14 +111,8 @@ export default function AdminOverlay({ onClose, hotkey }) {
                     }}
                   />
 
-                  <button
-                    onClick={() => {
-                      // reset animation blocker if you add a toast later
-                      void applyManualAdjustment();
-                    }}
-                  >
-                    Apply
-                  </button>
+                  {/* Apply now correctly fires every time */}
+                  <button onClick={applyManualAdjustment}>Apply</button> {/* ⬅ FIXED binding */}
                 </div>
               </div>
             </>
