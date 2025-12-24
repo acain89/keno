@@ -1,17 +1,17 @@
 // frontend/src/admin/AdminOverlay.jsx
 import React, { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
-import { collection, query, where, onSnapshot } from "firebase/firestore"; // ⬅ FIXED imports
-import { db, auth } from "../services/firebase"; // ⬅ merged into one line
+import { collection, query, where, onSnapshot } from "firebase/firestore";
+import { db, auth } from "../services/firebase";
+import { doc, updateDoc, increment } from "firebase/firestore"; // ⬅ FIXED: missing imports restored
 import PlayerSearch from "./PlayerSearch";
 import "./admin.css";
 
 export default function AdminOverlay({ onClose, hotkey }) {
-  /* ================= PLAYER ================= */
   const [selectedPlayer, setSelectedPlayer] = useState(null);
 
   /* ================= ONLINE PLAYERS COUNTER ================= */
-  const [onlineCount, setOnlineCount] = useState(0); // ⬅ FIXED: inside component
+  const [onlineCount, setOnlineCount] = useState(0);
 
   useEffect(() => {
     const q = query(collection(db, "users"), where("online", "==", true));
@@ -22,25 +22,11 @@ export default function AdminOverlay({ onClose, hotkey }) {
   }, []);
 
   /* ================= CREDIT ADJUST ================= */
-  const [creditDelta, setCreditDelta] = useState("");
-  const [adjustMode, setAdjustMode] = useState("ADD"); // ADD | SUB
-
-  const adjustCredits = async (amount) => {
-    if (!selectedPlayer || !amount) return;
-    const ref = doc(db, "users", selectedPlayer.uid);
-
-    await updateDoc(ref, {
-      credits: increment(amount),
-    });
-
-    setSelectedPlayer((p) => ({
-      ...p,
-      credits: (p.credits || 0) + amount,
-    }));
-  };
+  const [creditDelta, setAdjustDelta] = useState("");
+  const [adjustMode, setAdjustMode] = useState("ADD");
 
   const applyManualAdjustment = async () => {
-    if (!selectedPlayer?.uid) return;
+    if (!selectedPlayer || !selectedPlayer.uid) return; // ⬅ FIXED guard order
     const amt = Number(creditDelta);
     if (!Number.isFinite(amt) || amt <= 0) return;
 
@@ -49,20 +35,17 @@ export default function AdminOverlay({ onClose, hotkey }) {
 
     await updateDoc(ref, {
       credits: increment(signed),
-      adminOverride: {
-        role: adjustMode === "ADD" ? "WINNER" : "LOSER",
-      },
+      adminOverride: { role: adjustMode === "ADD" ? "WINNER" : "LOSER" },
     });
 
+    // optimistic update
     setSelectedPlayer((p) => ({
       ...p,
       credits: (p.credits || 0) + signed,
-      adminOverride: {
-        role: adjustMode === "ADD" ? "WINNER" : "LOSER",
-      },
+      adminOverride: { role: adjustMode === "ADD" ? "WINNER" : "LOSER" },
     }));
 
-    setCreditDelta("");
+    setAdjustDelta("");
   };
 
   /* ================= RENDER ================= */
@@ -80,36 +63,23 @@ export default function AdminOverlay({ onClose, hotkey }) {
         </div>
 
         <div className="admin-body">
-          {/* ONLINE COUNTER (NOW VALID JSX) */}
           <div className="admin-current-player">
             Current Players: {onlineCount}
           </div>
 
-          {/* PLAYER SEARCH */}
           <PlayerSearch onSelect={setSelectedPlayer} />
 
           {selectedPlayer && (
             <>
-              {/* PLAYER INFO */}
               <div className="admin-section">
                 <h3>Selected Player</h3>
                 <div className="admin-kv">
-                  <div>
-                    <strong>Username:</strong>{" "}
-                    {selectedPlayer.username || "—"}
-                  </div>
-                  <div>
-                    <strong>Cash App:</strong>{" "}
-                    {selectedPlayer.cashApp || "—"}
-                  </div>
-                  <div>
-                    <strong>Credits:</strong>{" "}
-                    ${selectedPlayer.credits ?? 0}
-                  </div>
+                  <div><strong>Username:</strong> {selectedPlayer.username || "—"}</div>
+                  <div><strong>Cash App:</strong> {selectedPlayer.cashApp || "—"}</div>
+                  <div><strong>Credits:</strong> ${selectedPlayer.credits ?? 0}</div>
                 </div>
               </div>
 
-              {/* CREDIT ADJUST */}
               <div className="admin-section">
                 <h3>Adjust Credits</h3>
                 <div className="admin-adjust">
@@ -134,13 +104,18 @@ export default function AdminOverlay({ onClose, hotkey }) {
                     value={creditDelta}
                     onChange={(e) => {
                       const v = e.target.value;
-                      if (/^\d*\.?\d*$/.test(v)) {
-                        setCreditDelta(v);
-                      }
+                      if (/^\d*\.?\d*$/.test(v)) setAdjustDelta(v);
                     }}
                   />
 
-                  <button onClick={applyManualAdjustment}>Apply</button>
+                  <button
+                    onClick={() => {
+                      // reset animation blocker if you add a toast later
+                      void applyManualAdjustment();
+                    }}
+                  >
+                    Apply
+                  </button>
                 </div>
               </div>
             </>
@@ -150,5 +125,5 @@ export default function AdminOverlay({ onClose, hotkey }) {
     </div>
   );
 
-  return createPortal(panel, document.body); // unchanged usage
+  return createPortal(panel, document.body);
 }

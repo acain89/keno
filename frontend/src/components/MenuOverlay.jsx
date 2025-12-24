@@ -1,7 +1,7 @@
+// frontend/src/components/MenuOverlay.jsx
 import React, { useEffect } from "react";
 import LoginTab from "./LoginTab";
 import ProfileTab from "./ProfileTab";
-import PayTable from "./PayTable";
 import "./menuOverlay.css";
 
 export default function MenuOverlay({
@@ -45,13 +45,6 @@ export default function MenuOverlay({
             >
               PROFILE
             </button>
-
-            <button
-              className={tab === "paytable" ? "active" : ""}
-              onClick={() => setTab("paytable")}
-            >
-              PAY TABLE
-            </button>
           </div>
 
           <button className="menu-close" onClick={onClose}>
@@ -61,12 +54,9 @@ export default function MenuOverlay({
 
         <div className="menu-body">
           {tab === "login" && <LoginTab onLoginSuccess={onLoginSuccess} />}
-
           {tab === "profile" && (
             <ProfileTab credits={credits} onLogout={onLogout} />
           )}
-
-          {tab === "paytable" && <PayTable />}
         </div>
       </aside>
     </>
